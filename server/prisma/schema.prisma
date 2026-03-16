@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum RedemptionStatus {
+  NOT_REDEEMED
+  REDEEMED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+model Student {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String         @db.VarChar(120)
+  email             String         @unique @db.VarChar(255)
+  hashedPassword    String         @map("hashed_password") @db.VarChar(255)
+  profilePictureUrl String?        @map("profile_picture_url") @db.Text
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  registrations     Registration[]
+  notifications     Notification[]
+
+  @@map("students")
+}
+
+model Organizer {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @db.VarChar(120)
+  email             String   @unique @db.VarChar(255)
+  hashedPassword    String   @map("hashed_password") @db.VarChar(255)
+  organizationName  String   @map("organization_name") @db.VarChar(160)
+  profilePictureUrl String?  @map("profile_picture_url") @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  events            Event[]
+
+  @@map("organizers")
+}
+
+model Staff {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(120)
+  email          String   @unique @db.VarChar(255)
+  hashedPassword String   @map("hashed_password") @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  validatedTickets Ticket[] @relation("TicketValidatedByStaff")
+
+  @@map("staff")
+}
+
+model Event {
+  id             String         @id @default(uuid()) @db.Uuid
+  title          String         @db.VarChar(200)
+  description    String         @db.Text
+  location       String         @db.VarChar(255)
+  dateTime       DateTime       @map("date_time") @db.Timestamptz(6)
+  capacity       Int
+  ticketPrice    Decimal        @map("ticket_price") @db.Decimal(10, 2)
+  coverImageUrl  String?        @map("cover_image_url") @db.Text
+  status         EventStatus    @default(DRAFT)
+  organizerId    String         @map("organizer_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  organizer      Organizer      @relation(fields: [organizerId], references: [id], onDelete: Restrict)
+  registrations  Registration[]
+  notifications  Notification[]
+
+  @@index([organizerId])
+  @@index([dateTime])
+  @@index([status])
+  @@map("events")
+}
+
+model Registration {
+  id               String        @id @default(uuid()) @db.Uuid
+  studentId        String        @map("student_id") @db.Uuid
+  eventId          String        @map("event_id") @db.Uuid
+  registrationDate DateTime      @default(now()) @map("registration_date") @db.Timestamptz(6)
+  paymentStatus    PaymentStatus @default(PENDING) @map("payment_status")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  student          Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  event            Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ticket           Ticket?
+
+  @@unique([studentId, eventId])
+  @@index([eventId])
+  @@index([studentId])
+  @@index([paymentStatus])
+  @@map("registrations")
+}
+
+model Ticket {
+  id                String           @id @default(uuid()) @db.Uuid
+  registrationId    String           @unique @map("registration_id") @db.Uuid
+  qrCodeData        String           @unique @map("qr_code_data") @db.Text
+  redemptionStatus  RedemptionStatus @default(NOT_REDEEMED) @map("redemption_status")
+  redeemedAt        DateTime?        @map("redeemed_at") @db.Timestamptz(6)
+  validatedByStaffId String?         @map("validated_by_staff_id") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  registration      Registration     @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  validatedByStaff  Staff?           @relation("TicketValidatedByStaff", fields: [validatedByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([validatedByStaffId])
+  @@index([redemptionStatus])
+  @@map("tickets")
+}
+
+model Notification {
+  id             String   @id @default(uuid()) @db.Uuid
+  studentId      String   @map("student_id") @db.Uuid
+  eventId        String   @map("event_id") @db.Uuid
+  messageContent String   @map("message_content") @db.Text
+  readStatus     Boolean  @default(false) @map("read_status")
+  createdAt      DateTime @default(now()) @map("created_at")
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, readStatus])
+  @@index([eventId])
+  @@map("notifications")
+}
