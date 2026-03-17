@@ -10,4 +10,5 @@ server/node_modules
 server/dist
 server/generated
 server/.env
+secrets.txt
 
