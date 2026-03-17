@@ -12,6 +12,8 @@
     "build": "npm run build --workspace client && npm run build --workspace server"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1011.0",
+    "@aws-sdk/s3-request-presigner": "^3.1011.0",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3"
   },

@@ -13,7 +13,7 @@ CREATE TABLE "students" (
     "name" VARCHAR(120) NOT NULL,
     "email" VARCHAR(255) NOT NULL,
     "hashed_password" VARCHAR(255) NOT NULL,
-    "profile_picture_url" TEXT,
+    "avatar_url" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -27,7 +27,7 @@ CREATE TABLE "organizers" (
     "email" VARCHAR(255) NOT NULL,
     "hashed_password" VARCHAR(255) NOT NULL,
     "organization_name" VARCHAR(160) NOT NULL,
-    "profile_picture_url" TEXT,
+    "avatar_url" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -40,6 +40,7 @@ CREATE TABLE "staff" (
     "name" VARCHAR(120) NOT NULL,
     "email" VARCHAR(255) NOT NULL,
     "hashed_password" VARCHAR(255) NOT NULL,
+    "avatar_url" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 

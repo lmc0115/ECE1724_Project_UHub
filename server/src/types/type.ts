@@ -1,4 +1,4 @@
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
 export type UserRole = "student" | "organizer" | "staff";
 
@@ -16,6 +16,43 @@ declare global {
   }
 }
 
+// ── Auth request bodies ────────────────────────────────────────────────────────
+
+export type RegisterStudentBody = {
+  name?: string;
+  email?: string;
+  password?: string;
+  avatarUrl?: string;
+};
+
+export type RegisterOrganizerBody = {
+  name?: string;
+  email?: string;
+  password?: string;
+  organizationName?: string;
+  avatarUrl?: string;
+};
+
+export type RegisterStaffBody = {
+  name?: string;
+  email?: string;
+  password?: string;
+  avatarUrl?: string;
+};
+
+export type LoginBody = {
+  email?: string;
+  password?: string;
+};
+
+export type AvatarPresignedUrlBody = {
+  contentType?: string;
+};
+
+export type AvatarUpdateBody = {
+  avatarUrl?: string;
+};
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 export type EventStatusValue = "DRAFT" | "PUBLISHED" | "CANCELLED";
@@ -31,4 +68,28 @@ export type EventRequestBody = {
   coverImageUrl?: string | null;
   status?: EventStatusValue | null;
   organizerId?: string | null;
+};
+
+export type CreateEventData = {
+  title: string;
+  description: string;
+  location: string;
+  dateTime: Date;
+  capacity: number;
+  ticketPrice: number;
+  coverImageUrl: string | null;
+  status: EventStatusValue;
+  organizerId: string;
+};
+
+export type UpdateEventData = {
+  title?: string;
+  description?: string;
+  location?: string;
+  dateTime?: Date;
+  capacity?: number;
+  ticketPrice?: number;
+  coverImageUrl?: string | null;
+  status?: EventStatusValue;
+  organizerId?: string;
 };

@@ -17,37 +17,18 @@ Helper Functions:
 - sendServerError: Handles server errors by logging the error and sending a standardized error response to the client.
 */
 
-import { Response, Router } from "express";
+import { Request, Response, Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import { EventRequestBody } from "../../types/type.js";
+import { generatePresignedUploadUrl, isAllowedImageType, keyFromPublicUrl, deleteS3Object } from "../../lib/s3.js";
+import { requireAuth } from "../../middleware/auth.middleware.js";
+import {
+  EventRequestBody,
+  EventStatusValue,
+  CreateEventData,
+  UpdateEventData
+} from "../../types/type.js";
 
 export const eventRouter = Router();
-
-type EventStatusValue = "DRAFT" | "PUBLISHED" | "CANCELLED";
-
-type CreateEventData = {
-  title: string;
-  description: string;
-  location: string;
-  dateTime: Date;
-  capacity: number;
-  ticketPrice: number;
-  coverImageUrl: string | null;
-  status: EventStatusValue;
-  organizerId: string;
-};
-
-type UpdateEventData = {
-  title?: string;
-  description?: string;
-  location?: string;
-  dateTime?: Date;
-  capacity?: number;
-  ticketPrice?: number;
-  coverImageUrl?: string | null;
-  status?: EventStatusValue;
-  organizerId?: string;
-};
 
 // parse and validate input for dateTime and numeric fields
 const parseDateTime = (value: EventRequestBody["dateTime"]) => {
@@ -214,6 +195,66 @@ const sendServerError = (res: Response, error: unknown) => {
     error: "Internal server error"
   });
 };
+
+// ── POST /api/events/upload-url ───────────────────────────────────────────────
+// Step 1 of the event cover-image upload flow (JWT required).
+// Returns a presigned S3 PUT URL valid for 5 minutes.
+// The client uploads the image directly to S3, then passes the returned
+// publicUrl as coverImageUrl when creating or updating an event.
+
+eventRouter.post("/upload-url", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { contentType } = req.body as { contentType?: string };
+
+    if (!contentType) {
+      return res.status(400).json({ error: "contentType is required." });
+    }
+    if (!isAllowedImageType(contentType)) {
+      return res.status(400).json({
+        error: "Unsupported image type. Allowed: image/jpeg, image/png, image/webp, image/gif."
+      });
+    }
+
+    const { sub: organizerId } = req.user!;
+    const { uploadUrl, publicUrl, key } = await generatePresignedUploadUrl(
+      "events/covers",
+      organizerId,
+      contentType
+    );
+
+    return res.status(200).json({ uploadUrl, publicUrl, key });
+  } catch (error) {
+    return sendServerError(res, error);
+  }
+});
+
+// ── DELETE /api/events/:eventId/cover-image ───────────────────────────────────
+// Removes the cover image from S3 and clears the coverImageUrl on the event.
+
+eventRouter.delete("/:eventId/cover-image", requireAuth, async (req: Request<{ eventId: string }>, res: Response) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (!event.coverImageUrl) {
+      return res.status(400).json({ error: "This event has no cover image." });
+    }
+
+    const oldKey = keyFromPublicUrl(event.coverImageUrl);
+    if (oldKey) await deleteS3Object(oldKey).catch(() => null);
+
+    const updated = await prisma.event.update({
+      where: { id: String(req.params.eventId) },
+      data:  { coverImageUrl: null }
+    });
+
+    return res.status(200).json(updated);
+  } catch (error) {
+    return sendServerError(res, error);
+  }
+});
 
 //Here starts the HTTP requests
 // GET /api/events - list all events

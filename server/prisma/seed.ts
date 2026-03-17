@@ -24,7 +24,7 @@ async function main() {
         email: "alice.organizer@uhub.test",
         hashedPassword: "hashed_password_1",
         organizationName: "Computer Science Club",
-        profilePictureUrl: "https://example.com/organizers/alice.png"
+        avatarUrl: "https://example.com/organizers/alice.png"
       }
     }),
     prisma.organizer.create({
@@ -33,7 +33,7 @@ async function main() {
         email: "brian.organizer@uhub.test",
         hashedPassword: "hashed_password_2",
         organizationName: "Engineering Society",
-        profilePictureUrl: "https://example.com/organizers/brian.png"
+        avatarUrl: "https://example.com/organizers/brian.png"
       }
     }),
     prisma.organizer.create({
@@ -42,7 +42,7 @@ async function main() {
         email: "cindy.organizer@uhub.test",
         hashedPassword: "hashed_password_3",
         organizationName: "Campus Events Team",
-        profilePictureUrl: "https://example.com/organizers/cindy.png"
+        avatarUrl: "https://example.com/organizers/cindy.png"
       }
     })
   ]);
@@ -53,7 +53,7 @@ async function main() {
         name: "Sam Student",
         email: "sam.student@uhub.test",
         hashedPassword: "hashed_password_1",
-        profilePictureUrl: "https://example.com/students/sam.png"
+        avatarUrl: "https://example.com/students/sam.png"
       }
     }),
     prisma.student.create({
@@ -61,7 +61,7 @@ async function main() {
         name: "Taylor Student",
         email: "taylor.student@uhub.test",
         hashedPassword: "hashed_password_2",
-        profilePictureUrl: "https://example.com/students/taylor.png"
+        avatarUrl: "https://example.com/students/taylor.png"
       }
     }),
     prisma.student.create({
@@ -69,7 +69,7 @@ async function main() {
         name: "Jordan Student",
         email: "jordan.student@uhub.test",
         hashedPassword: "hashed_password_3",
-        profilePictureUrl: "https://example.com/students/jordan.png"
+          avatarUrl: "https://example.com/students/jordan.png"
       }
     })
   ]);

@@ -26,40 +26,41 @@ enum EventStatus {
 }
 
 model Student {
-  id                String         @id @default(uuid()) @db.Uuid
-  name              String         @db.VarChar(120)
-  email             String         @unique @db.VarChar(255)
-  hashedPassword    String         @map("hashed_password") @db.VarChar(255)
-  profilePictureUrl String?        @map("profile_picture_url") @db.Text
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  registrations     Registration[]
-  notifications     Notification[]
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         @db.VarChar(120)
+  email          String         @unique @db.VarChar(255)
+  hashedPassword String         @map("hashed_password") @db.VarChar(255)
+  avatarUrl      String?        @map("avatar_url") @db.Text
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  registrations  Registration[]
+  notifications  Notification[]
 
   @@map("students")
 }
 
 model Organizer {
-  id                String   @id @default(uuid()) @db.Uuid
-  name              String   @db.VarChar(120)
-  email             String   @unique @db.VarChar(255)
-  hashedPassword    String   @map("hashed_password") @db.VarChar(255)
-  organizationName  String   @map("organization_name") @db.VarChar(160)
-  profilePictureUrl String?  @map("profile_picture_url") @db.Text
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  events            Event[]
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String   @db.VarChar(120)
+  email            String   @unique @db.VarChar(255)
+  hashedPassword   String   @map("hashed_password") @db.VarChar(255)
+  organizationName String   @map("organization_name") @db.VarChar(160)
+  avatarUrl        String?  @map("avatar_url") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  events           Event[]
 
   @@map("organizers")
 }
 
 model Staff {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @db.VarChar(120)
-  email          String   @unique @db.VarChar(255)
-  hashedPassword String   @map("hashed_password") @db.VarChar(255)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String   @db.VarChar(120)
+  email            String   @unique @db.VarChar(255)
+  hashedPassword   String   @map("hashed_password") @db.VarChar(255)
+  avatarUrl        String?  @map("avatar_url") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
   validatedTickets Ticket[] @relation("TicketValidatedByStaff")
 
   @@map("staff")

@@ -1,27 +1,39 @@
 /*
-This file defines the API routes for authentication in the UHub application. It includes endpoints for registering and logging in users. The routes are implemented using Express and interact with a Prisma client to perform database operations. Input validation and error handling are included to ensure robust API behavior.
-The main routes are:
-- POST /api/auth/register/student: Register a new student
-- POST /api/auth/register/organizer: Register a new organizer
-- POST /api/auth/register/staff: Register a new staff
-- POST /api/auth/login: Login a user
-- GET /api/auth/me: Get the current user
+Authentication routes for the UHub application.
 
-The middleware used is requireAuth, which verifies the Bearer JWT in the Authorization header and attaches the decoded payload to req.user.
-Each route includes input normalization and validation to handle various input formats and ensure data integrity. Server errors are logged and returned with a 500 status code, while client errors (e.g., invalid input, not found) return appropriate status codes and error messages.
+Routes:
+  POST /api/auth/register/student   – create a student account
+  POST /api/auth/register/organizer – create an organizer account
+  POST /api/auth/register/staff     – create a staff account
+  POST /api/auth/login              – sign in (auto-detects role)
+  GET  /api/auth/me                 – return the current user's profile (JWT required)
+  POST /api/auth/avatar/presigned-url – get a presigned S3 PUT URL for avatar upload (JWT required)
+  PUT  /api/auth/avatar             – save the uploaded avatar URL to the user's profile (JWT required)
 
-Helper Functions:
-- signToken: Signs a JWT token with the given sub and role.
-- isValidEmail: Checks if the email is valid.
-- isStrongPassword: Checks if the password is strong.
+  Helper functions:
+  - signToken(sub: string, role: UserRole): string
+  - isValidEmail(email: string): boolean
+  - isStrongPassword(password: string): boolean
+
 */
+
 import { Request, Response, Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
+import { generatePresignedUploadUrl, isAllowedImageType, keyFromPublicUrl, deleteS3Object } from "../../lib/s3.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
-import { AuthPayload, UserRole } from "../../types/type.js";
+import {
+  AuthPayload,
+  UserRole,
+  RegisterStudentBody,
+  RegisterOrganizerBody,
+  RegisterStaffBody,
+  LoginBody,
+  AvatarPresignedUrlBody,
+  AvatarUpdateBody
+} from "../../types/type.js";
 
 export const authRouter = Router();
 
@@ -42,12 +54,7 @@ const isStrongPassword = (password: string) => password.length >= 8;
 
 authRouter.post("/register/student", async (req: Request, res: Response) => {
   try {
-    const { name, email, password, profilePictureUrl } = req.body as {
-      name?: string;
-      email?: string;
-      password?: string;
-      profilePictureUrl?: string;
-    };
+    const { name, email, password, avatarUrl } = req.body as RegisterStudentBody;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "name, email, and password are required." });
@@ -70,7 +77,7 @@ authRouter.post("/register/student", async (req: Request, res: Response) => {
         name,
         email,
         hashedPassword,
-        profilePictureUrl: profilePictureUrl ?? null
+        avatarUrl: avatarUrl ?? null
       }
     });
 
@@ -79,11 +86,11 @@ authRouter.post("/register/student", async (req: Request, res: Response) => {
     return res.status(201).json({
       token,
       user: {
-        id: student.id,
-        name: student.name,
-        email: student.email,
-        role: "student" as UserRole,
-        profilePictureUrl: student.profilePictureUrl
+        id:        student.id,
+        name:      student.name,
+        email:     student.email,
+        role:      "student" as UserRole,
+        avatarUrl: student.avatarUrl
       }
     });
   } catch (error) {
@@ -96,13 +103,7 @@ authRouter.post("/register/student", async (req: Request, res: Response) => {
 
 authRouter.post("/register/organizer", async (req: Request, res: Response) => {
   try {
-    const { name, email, password, organizationName, profilePictureUrl } = req.body as {
-      name?: string;
-      email?: string;
-      password?: string;
-      organizationName?: string;
-      profilePictureUrl?: string;
-    };
+    const { name, email, password, organizationName, avatarUrl } = req.body as RegisterOrganizerBody;
 
     if (!name || !email || !password || !organizationName) {
       return res
@@ -128,7 +129,7 @@ authRouter.post("/register/organizer", async (req: Request, res: Response) => {
         email,
         hashedPassword,
         organizationName,
-        profilePictureUrl: profilePictureUrl ?? null
+        avatarUrl: avatarUrl ?? null
       }
     });
 
@@ -137,12 +138,12 @@ authRouter.post("/register/organizer", async (req: Request, res: Response) => {
     return res.status(201).json({
       token,
       user: {
-        id: organizer.id,
-        name: organizer.name,
-        email: organizer.email,
-        role: "organizer" as UserRole,
+        id:               organizer.id,
+        name:             organizer.name,
+        email:            organizer.email,
+        role:             "organizer" as UserRole,
         organizationName: organizer.organizationName,
-        profilePictureUrl: organizer.profilePictureUrl
+        avatarUrl:        organizer.avatarUrl
       }
     });
   } catch (error) {
@@ -155,11 +156,7 @@ authRouter.post("/register/organizer", async (req: Request, res: Response) => {
 
 authRouter.post("/register/staff", async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body as {
-      name?: string;
-      email?: string;
-      password?: string;
-    };
+    const { name, email, password, avatarUrl } = req.body as RegisterStaffBody;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "name, email, and password are required." });
@@ -178,7 +175,7 @@ authRouter.post("/register/staff", async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
     const staff = await prisma.staff.create({
-      data: { name, email, hashedPassword }
+      data: { name, email, hashedPassword, avatarUrl: avatarUrl ?? null }
     });
 
     const token = signToken(staff.id, "staff");
@@ -186,10 +183,11 @@ authRouter.post("/register/staff", async (req: Request, res: Response) => {
     return res.status(201).json({
       token,
       user: {
-        id: staff.id,
-        name: staff.name,
-        email: staff.email,
-        role: "staff" as UserRole
+        id:        staff.id,
+        name:      staff.name,
+        email:     staff.email,
+        role:      "staff" as UserRole,
+        avatarUrl: staff.avatarUrl
       }
     });
   } catch (error) {
@@ -199,17 +197,16 @@ authRouter.post("/register/staff", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/auth/login ─────────────────────────────────────────────────────
-// Auto-detects role by searching students ,organizers and staff in order.
+// Auto-detects role by searching students → organizers → staff in order.
 
 authRouter.post("/login", async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
+    const { email, password } = req.body as LoginBody;
 
     if (!email || !password) {
       return res.status(400).json({ error: "email and password are required." });
     }
 
-    // Try each role table in priority order
     const student = await prisma.student.findUnique({ where: { email } });
     if (student) {
       const match = await bcrypt.compare(password, student.hashedPassword);
@@ -219,11 +216,11 @@ authRouter.post("/login", async (req: Request, res: Response) => {
       return res.status(200).json({
         token,
         user: {
-          id: student.id,
-          name: student.name,
-          email: student.email,
-          role: "student" as UserRole,
-          profilePictureUrl: student.profilePictureUrl
+          id:        student.id,
+          name:      student.name,
+          email:     student.email,
+          role:      "student" as UserRole,
+          avatarUrl: student.avatarUrl
         }
       });
     }
@@ -237,12 +234,12 @@ authRouter.post("/login", async (req: Request, res: Response) => {
       return res.status(200).json({
         token,
         user: {
-          id: organizer.id,
-          name: organizer.name,
-          email: organizer.email,
-          role: "organizer" as UserRole,
+          id:               organizer.id,
+          name:             organizer.name,
+          email:            organizer.email,
+          role:             "organizer" as UserRole,
           organizationName: organizer.organizationName,
-          profilePictureUrl: organizer.profilePictureUrl
+          avatarUrl:        organizer.avatarUrl
         }
       });
     }
@@ -256,15 +253,16 @@ authRouter.post("/login", async (req: Request, res: Response) => {
       return res.status(200).json({
         token,
         user: {
-          id: staff.id,
-          name: staff.name,
-          email: staff.email,
-          role: "staff" as UserRole
+          id:        staff.id,
+          name:      staff.name,
+          email:     staff.email,
+          role:      "staff" as UserRole,
+          avatarUrl: staff.avatarUrl
         }
       });
     }
 
-    // Email not found in any table — return the same message to avoid enumeration
+    // Same error message whether the email doesn't exist or the password is wrong
     return res.status(401).json({ error: "Invalid credentials." });
   } catch (error) {
     console.error("Login error:", error);
@@ -282,11 +280,11 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
       const student = await prisma.student.findUnique({ where: { id } });
       if (!student) return res.status(404).json({ error: "User not found." });
       return res.status(200).json({
-        id: student.id,
-        name: student.name,
-        email: student.email,
+        id:        student.id,
+        name:      student.name,
+        email:     student.email,
         role,
-        profilePictureUrl: student.profilePictureUrl,
+        avatarUrl: student.avatarUrl,
         createdAt: student.createdAt
       });
     }
@@ -295,13 +293,13 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
       const organizer = await prisma.organizer.findUnique({ where: { id } });
       if (!organizer) return res.status(404).json({ error: "User not found." });
       return res.status(200).json({
-        id: organizer.id,
-        name: organizer.name,
-        email: organizer.email,
+        id:               organizer.id,
+        name:             organizer.name,
+        email:            organizer.email,
         role,
         organizationName: organizer.organizationName,
-        profilePictureUrl: organizer.profilePictureUrl,
-        createdAt: organizer.createdAt
+        avatarUrl:        organizer.avatarUrl,
+        createdAt:        organizer.createdAt
       });
     }
 
@@ -309,10 +307,11 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
       const staff = await prisma.staff.findUnique({ where: { id } });
       if (!staff) return res.status(404).json({ error: "User not found." });
       return res.status(200).json({
-        id: staff.id,
-        name: staff.name,
-        email: staff.email,
+        id:        staff.id,
+        name:      staff.name,
+        email:     staff.email,
         role,
+        avatarUrl: staff.avatarUrl,
         createdAt: staff.createdAt
       });
     }
@@ -320,6 +319,111 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Unknown role." });
   } catch (error) {
     console.error("Me error:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// ── POST /api/auth/avatar/presigned-url ──────────────────────────────────────
+// Step 1 of the avatar upload flow.
+// Returns a presigned S3 PUT URL valid for 5 minutes.
+// The client uploads the image file directly to S3 using this URL,
+// then calls PUT /api/auth/avatar with the resulting publicUrl.
+
+authRouter.post("/avatar/presigned-url", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { contentType } = req.body as AvatarPresignedUrlBody;
+
+    if (!contentType) {
+      return res.status(400).json({ error: "contentType is required." });
+    }
+    if (!isAllowedImageType(contentType)) {
+      return res.status(400).json({
+        error: "Unsupported image type. Allowed: image/jpeg, image/png, image/webp, image/gif."
+      });
+    }
+
+    const { sub: userId } = req.user!;
+    const { uploadUrl, publicUrl, key } = await generatePresignedUploadUrl(
+      "avatars",
+      userId,
+      contentType
+    );
+
+    return res.status(200).json({ uploadUrl, publicUrl, key });
+  } catch (error) {
+    console.error("Avatar presigned URL error:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// ── PUT /api/auth/avatar ──────────────────────────────────────────────────────
+// Step 2 of the avatar upload flow.
+// After the client has uploaded the image to S3, call this endpoint with
+// the publicUrl to persist it on the user's profile.
+// If the user already has an avatar stored in this bucket, the old object
+// is deleted from S3 automatically.
+
+authRouter.put("/avatar", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { avatarUrl } = req.body as AvatarUpdateBody;
+
+    if (!avatarUrl) {
+      return res.status(400).json({ error: "avatarUrl is required." });
+    }
+
+    const { sub: id, role } = req.user!;
+
+    if (role === "student") {
+      const student = await prisma.student.findUnique({ where: { id } });
+      if (!student) return res.status(404).json({ error: "User not found." });
+
+      if (student.avatarUrl) {
+        const oldKey = keyFromPublicUrl(student.avatarUrl);
+        if (oldKey) await deleteS3Object(oldKey).catch(() => null);
+      }
+
+      const updated = await prisma.student.update({
+        where: { id },
+        data:  { avatarUrl }
+      });
+      return res.status(200).json({ avatarUrl: updated.avatarUrl });
+    }
+
+    if (role === "organizer") {
+      const organizer = await prisma.organizer.findUnique({ where: { id } });
+      if (!organizer) return res.status(404).json({ error: "User not found." });
+
+      if (organizer.avatarUrl) {
+        const oldKey = keyFromPublicUrl(organizer.avatarUrl);
+        if (oldKey) await deleteS3Object(oldKey).catch(() => null);
+      }
+
+      const updated = await prisma.organizer.update({
+        where: { id },
+        data:  { avatarUrl }
+      });
+      return res.status(200).json({ avatarUrl: updated.avatarUrl });
+    }
+
+    if (role === "staff") {
+      const staff = await prisma.staff.findUnique({ where: { id } });
+      if (!staff) return res.status(404).json({ error: "User not found." });
+
+      if (staff.avatarUrl) {
+        const oldKey = keyFromPublicUrl(staff.avatarUrl);
+        if (oldKey) await deleteS3Object(oldKey).catch(() => null);
+      }
+
+      const updated = await prisma.staff.update({
+        where: { id },
+        data:  { avatarUrl }
+      });
+      return res.status(200).json({ avatarUrl: updated.avatarUrl });
+    }
+
+    return res.status(400).json({ error: "Unknown role." });
+  } catch (error) {
+    console.error("Avatar update error:", error);
     return res.status(500).json({ error: "Internal server error." });
   }
 });
