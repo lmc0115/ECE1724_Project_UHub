@@ -91,7 +91,7 @@ registrationRouter.get("/my", requireAuth, requireRole("student"), async (req: R
 registrationRouter.delete("/:id", requireAuth, requireRole("student"), async (req: Request, res: Response) => {
   try {
     const studentId = req.user!.sub;
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const registration = await prisma.registration.findUnique({ where: { id } });
     if (!registration) return res.status(404).json({ error: "Registration not found." });

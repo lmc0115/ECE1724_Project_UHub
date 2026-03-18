@@ -64,22 +64,36 @@ function CheckInView() {
   const [loading, setLoading] = useState(false);
   const scannerRef = useRef<any>(null);
   const scannerContainerRef = useRef<HTMLDivElement>(null);
+  const isRunningRef = useRef(false);
+
+  const safeStop = async (scanner: any) => {
+    if (!scanner || !isRunningRef.current) return;
+    isRunningRef.current = false;
+    try {
+      await scanner.stop();
+    } catch {
+      // already stopped or never fully started
+    }
+  };
 
   useEffect(() => {
     if (mode !== "camera") {
-      stopScanner();
+      safeStop(scannerRef.current).then(() => {
+        scannerRef.current = null;
+        setScanning(false);
+      });
       return;
     }
 
     let html5QrCode: any = null;
+    let cancelled = false;
 
     const startScanner = async () => {
       const { Html5Qrcode } = await import("html5-qrcode");
-      if (!scannerContainerRef.current) return;
+      if (cancelled || !scannerContainerRef.current) return;
 
       html5QrCode = new Html5Qrcode("qr-reader");
       scannerRef.current = html5QrCode;
-      setScanning(true);
 
       try {
         await html5QrCode.start(
@@ -87,32 +101,35 @@ function CheckInView() {
           { fps: 10, qrbox: { width: 250, height: 250 } },
           (decodedText: string) => {
             handleVerify(decodedText);
-            html5QrCode.stop().catch(() => {});
-            setScanning(false);
+            safeStop(html5QrCode).then(() => setScanning(false));
           },
           () => {}
         );
+        if (!cancelled) {
+          isRunningRef.current = true;
+          setScanning(true);
+        } else {
+          // mode switched while scanner was starting — stop immediately
+          isRunningRef.current = true;
+          await safeStop(html5QrCode);
+          scannerRef.current = null;
+          setScanning(false);
+        }
       } catch {
-        setMode("manual");
+        if (!cancelled) setMode("manual");
       }
     };
 
     startScanner();
 
     return () => {
-      if (html5QrCode) {
-        html5QrCode.stop().catch(() => {});
-      }
+      cancelled = true;
+      safeStop(scannerRef.current).then(() => {
+        scannerRef.current = null;
+        setScanning(false);
+      });
     };
   }, [mode]);
-
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      scannerRef.current.stop().catch(() => {});
-      scannerRef.current = null;
-    }
-    setScanning(false);
-  };
 
   const handleVerify = async (qrCodeData: string) => {
     if (!qrCodeData.trim()) return;
