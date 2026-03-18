@@ -7,6 +7,7 @@ Routes:
   POST /api/auth/register/staff     – create a staff account
   POST /api/auth/login              – sign in (auto-detects role)
   GET  /api/auth/me                 – return the current user's profile (JWT required)
+  PUT  /api/auth/me                 – update the current user's name/email (JWT required)
   POST /api/auth/avatar/presigned-url – get a presigned S3 PUT URL for avatar upload (JWT required)
   PUT  /api/auth/avatar             – save the uploaded avatar URL to the user's profile (JWT required)
 
@@ -319,6 +320,74 @@ authRouter.get("/me", requireAuth, async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Unknown role." });
   } catch (error) {
     console.error("Me error:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// ── PUT /api/auth/me ──────────────────────────────────────────────────────────
+
+authRouter.put("/me", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { sub: id, role } = req.user!;
+    const { name, email } = req.body as { name?: string; email?: string };
+
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ error: "Invalid email format." });
+    }
+
+    const data: Record<string, string> = {};
+    if (name) data.name = name;
+    if (email) data.email = email;
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "At least one field (name or email) is required." });
+    }
+
+    if (role === "student") {
+      if (email) {
+        const existing = await prisma.student.findUnique({ where: { email } });
+        if (existing && existing.id !== id) {
+          return res.status(409).json({ error: "Email is already in use." });
+        }
+      }
+      const student = await prisma.student.update({ where: { id }, data });
+      return res.status(200).json({
+        id: student.id, name: student.name, email: student.email,
+        role, avatarUrl: student.avatarUrl
+      });
+    }
+
+    if (role === "organizer") {
+      if (email) {
+        const existing = await prisma.organizer.findUnique({ where: { email } });
+        if (existing && existing.id !== id) {
+          return res.status(409).json({ error: "Email is already in use." });
+        }
+      }
+      const organizer = await prisma.organizer.update({ where: { id }, data });
+      return res.status(200).json({
+        id: organizer.id, name: organizer.name, email: organizer.email,
+        role, organizationName: organizer.organizationName, avatarUrl: organizer.avatarUrl
+      });
+    }
+
+    if (role === "staff") {
+      if (email) {
+        const existing = await prisma.staff.findUnique({ where: { email } });
+        if (existing && existing.id !== id) {
+          return res.status(409).json({ error: "Email is already in use." });
+        }
+      }
+      const staff = await prisma.staff.update({ where: { id }, data });
+      return res.status(200).json({
+        id: staff.id, name: staff.name, email: staff.email,
+        role, avatarUrl: staff.avatarUrl
+      });
+    }
+
+    return res.status(400).json({ error: "Unknown role." });
+  } catch (error) {
+    console.error("Update profile error:", error);
     return res.status(500).json({ error: "Internal server error." });
   }
 });

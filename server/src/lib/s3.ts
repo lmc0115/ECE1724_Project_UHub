@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, PutBucketCorsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { env } from "../config/env.js";
@@ -69,4 +69,58 @@ export const deleteS3Object = async (key: string): Promise<void> => {
 export const keyFromPublicUrl = (url: string): string | null => {
   const prefix = `https://${env.AWS_S3_BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/`;
   return url.startsWith(prefix) ? url.slice(prefix.length) : null;
+};
+
+/**
+ * Ensures the S3 bucket allows cross-origin PUT requests from browsers.
+ * Called once at server startup so presigned-URL uploads work.
+ */
+export const ensureBucketCors = async (): Promise<void> => {
+  if (!env.AWS_S3_BUCKET) return;
+  try {
+    await s3Client.send(
+      new PutBucketCorsCommand({
+        Bucket: env.AWS_S3_BUCKET,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedHeaders: ["*"],
+              AllowedMethods: ["PUT", "GET", "HEAD"],
+              AllowedOrigins: ["*"],
+              ExposeHeaders: ["ETag"],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      })
+    );
+    console.log("S3 bucket CORS configured successfully.");
+  } catch (err) {
+    console.warn("Could not set S3 CORS (non-fatal):", err);
+  }
+};
+
+/**
+ * Uploads a buffer directly to S3 (server-side upload, no presigned URL needed).
+ */
+export const uploadBufferToS3 = async (
+  folder: string,
+  ownerId: string,
+  contentType: string,
+  buffer: Buffer
+): Promise<{ publicUrl: string; key: string }> => {
+  const ext = ALLOWED_IMAGE_TYPES[contentType] ?? ".bin";
+  const key = `${folder}/${ownerId}/${randomUUID()}${ext}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: env.AWS_S3_BUCKET,
+      Key: key,
+      ContentType: contentType,
+      Body: buffer,
+    })
+  );
+
+  const publicUrl = `https://${env.AWS_S3_BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/${key}`;
+  return { publicUrl, key };
 };

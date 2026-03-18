@@ -7,6 +7,7 @@ import { organizerRouter } from "./modules/organizers.routes.js";
 import { registrationRouter } from "./modules/registrations.routes.js";
 import { staffRouter } from "./modules/staff.routes.js";
 import { ticketRouter } from "./modules/tickets.routes.js";
+import { uploadRouter } from "./modules/upload.routes.js";
 
 export const apiRouter = Router();
 
@@ -18,6 +19,7 @@ apiRouter.use("/tickets", ticketRouter);
 apiRouter.use("/notifications", notificationRouter);
 apiRouter.use("/organizers", organizerRouter);
 apiRouter.use("/staff", staffRouter);
+apiRouter.use("/upload", uploadRouter);
 
 apiRouter.get("/", (_req, res) => {
   res.json({

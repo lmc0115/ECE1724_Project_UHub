@@ -20,7 +20,7 @@ Helper Functions:
 import { Request, Response, Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { generatePresignedUploadUrl, isAllowedImageType, keyFromPublicUrl, deleteS3Object } from "../../lib/s3.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
+import { requireAuth, requireRole } from "../../middleware/auth.middleware.js";
 import {
   EventRequestBody,
   EventStatusValue,
@@ -272,6 +272,20 @@ eventRouter.get("/", async (_req, res) => {
   }
 });
 
+// GET /api/events/my - get events created by the logged-in organizer
+eventRouter.get("/my", requireAuth, requireRole("organizer"), async (req, res) => {
+  try {
+    const organizerId = req.user!.sub;
+    const events = await prisma.event.findMany({
+      where: { organizerId },
+      orderBy: { createdAt: "desc" },
+    });
+    return res.status(200).json(events);
+  } catch (error) {
+    return sendServerError(res, error);
+  }
+});
+
 // GET /api/events/:eventId - get event by ID
 eventRouter.get("/:eventId", async (req, res) => {
   try {
@@ -293,8 +307,8 @@ eventRouter.get("/:eventId", async (req, res) => {
   }
 });
 
-// POST /api/events - create a new event
-eventRouter.post("/", async (req, res) => {
+// POST /api/events - create a new event (organizer only, organizerId set from JWT)
+eventRouter.post("/", requireAuth, requireRole("organizer"), async (req, res) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({
@@ -302,7 +316,8 @@ eventRouter.post("/", async (req, res) => {
       });
     }
 
-    const normalized = normalizeCreateInput(req.body as EventRequestBody);
+    const body = { ...req.body, organizerId: req.user!.sub } as EventRequestBody;
+    const normalized = normalizeCreateInput(body);
 
     if ("error" in normalized) {
       return res.status(400).json({
@@ -314,14 +329,14 @@ eventRouter.post("/", async (req, res) => {
       data: normalized.data
     });
 
-    return res.status(200).json(event);
+    return res.status(201).json(event);
   } catch (error) {
     return sendServerError(res, error);
   }
 });
 
-// PUT /api/events/:eventId - update an existing event
-eventRouter.put("/:eventId", async (req, res) => {
+// PUT /api/events/:eventId - update an existing event (owner organizer only)
+eventRouter.put("/:eventId", requireAuth, requireRole("organizer"), async (req: Request<{ eventId: string }>, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({
@@ -330,29 +345,25 @@ eventRouter.put("/:eventId", async (req, res) => {
     }
 
     const existingEvent = await prisma.event.findUnique({
-      where: {
-        id: req.params.eventId
-      }
+      where: { id: req.params.eventId }
     });
 
     if (!existingEvent) {
-      return res.status(404).json({
-        error: "Event not found"
-      });
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    if (existingEvent.organizerId !== req.user!.sub) {
+      return res.status(403).json({ error: "You can only edit your own events." });
     }
 
     const normalized = normalizeUpdateInput(req.body as EventRequestBody);
 
     if ("error" in normalized) {
-      return res.status(400).json({
-        error: normalized.error
-      });
+      return res.status(400).json({ error: normalized.error });
     }
 
     const event = await prisma.event.update({
-      where: {
-        id: req.params.eventId
-      },
+      where: { id: req.params.eventId },
       data: normalized.data
     });
 
@@ -362,30 +373,26 @@ eventRouter.put("/:eventId", async (req, res) => {
   }
 });
 
-// DELETE /api/events/:eventId - delete an event
-eventRouter.delete("/:eventId", async (req, res) => {
+// DELETE /api/events/:eventId - delete an event (owner organizer only)
+eventRouter.delete("/:eventId", requireAuth, requireRole("organizer"), async (req: Request<{ eventId: string }>, res: Response) => {
   try {
     const existingEvent = await prisma.event.findUnique({
-      where: {
-        id: req.params.eventId
-      }
+      where: { id: req.params.eventId }
     });
 
     if (!existingEvent) {
-      return res.status(404).json({
-        error: "Event not found"
-      });
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    if (existingEvent.organizerId !== req.user!.sub) {
+      return res.status(403).json({ error: "You can only delete your own events." });
     }
 
     await prisma.event.delete({
-      where: {
-        id: req.params.eventId
-      }
+      where: { id: req.params.eventId }
     });
 
-    return res.status(200).json({
-      message: "Event deleted successfully"
-    });
+    return res.status(200).json({ message: "Event deleted successfully" });
   } catch (error) {
     return sendServerError(res, error);
   }
