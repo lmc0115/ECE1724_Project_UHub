@@ -20,6 +20,7 @@ Routes:
 
 import { Request, Response, Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
@@ -41,6 +42,31 @@ export const authRouter = Router();
 const SALT_ROUNDS = 12;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns the real client IP, respecting X-Forwarded-For set by fly.io's proxy. */
+const getClientIp = (req: Request): string | null => {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    return (typeof forwarded === "string" ? forwarded : forwarded[0])
+      .split(",")[0]
+      .trim();
+  }
+  return req.ip ?? req.socket?.remoteAddress ?? null;
+};
+
+/**
+ * Builds a stable server-side device fingerprint from request headers.
+ * Returns a 64-char hex SHA-256 digest — no client-side code required.
+ */
+const getDeviceFingerprint = (req: Request): string => {
+  const components = [
+    req.headers["user-agent"] ?? "",
+    req.headers["accept-language"] ?? "",
+    req.headers["accept"] ?? "",
+    req.headers["accept-encoding"] ?? ""
+  ].join("|");
+  return crypto.createHash("sha256").update(components).digest("hex");
+};
 
 const signToken = (sub: string, role: UserRole): string =>
   jwt.sign({ sub, role } satisfies AuthPayload, env.JWT_SECRET, {
@@ -78,7 +104,9 @@ authRouter.post("/register/student", async (req: Request, res: Response) => {
         name,
         email,
         hashedPassword,
-        avatarUrl: avatarUrl ?? null
+        avatarUrl: avatarUrl ?? null,
+        ipAddress: getClientIp(req),
+        deviceFingerprint: getDeviceFingerprint(req)
       }
     });
 
@@ -130,7 +158,9 @@ authRouter.post("/register/organizer", async (req: Request, res: Response) => {
         email,
         hashedPassword,
         organizationName,
-        avatarUrl: avatarUrl ?? null
+        avatarUrl: avatarUrl ?? null,
+        ipAddress: getClientIp(req),
+        deviceFingerprint: getDeviceFingerprint(req)
       }
     });
 
@@ -176,7 +206,14 @@ authRouter.post("/register/staff", async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
     const staff = await prisma.staff.create({
-      data: { name, email, hashedPassword, avatarUrl: avatarUrl ?? null }
+      data: {
+        name,
+        email,
+        hashedPassword,
+        avatarUrl: avatarUrl ?? null,
+        ipAddress: getClientIp(req),
+        deviceFingerprint: getDeviceFingerprint(req)
+      }
     });
 
     const token = signToken(staff.id, "staff");
