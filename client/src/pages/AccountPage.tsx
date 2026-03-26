@@ -12,7 +12,9 @@ import {
   updateProfile,
   uploadAvatar,
   clearError,
+  clearRegistrationSuccess,
 } from "@/store/authSlice";
+import { api, parseApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +48,7 @@ const ROLE_OPTIONS: { value: Role; label: string; description: string }[] = [
 function AuthForms() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { loading, error } = useAppSelector((s) => s.auth);
+  const { loading, error, registrationSuccess, needsVerification, verifyEmail } = useAppSelector((s) => s.auth);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -56,6 +58,8 @@ function AuthForms() {
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regOrgName, setRegOrgName] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,9 +70,8 @@ function AuthForms() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    let result;
     if (regRole === "organizer") {
-      result = await dispatch(
+      await dispatch(
         registerOrganizer({
           name: regName,
           email: regEmail,
@@ -76,19 +79,69 @@ function AuthForms() {
           organizationName: regOrgName,
         })
       );
-      if (registerOrganizer.fulfilled.match(result)) navigate("/");
     } else if (regRole === "staff") {
-      result = await dispatch(
+      await dispatch(
         registerStaff({ name: regName, email: regEmail, password: regPassword })
       );
-      if (registerStaff.fulfilled.match(result)) navigate("/");
     } else {
-      result = await dispatch(
+      await dispatch(
         registerStudent({ name: regName, email: regEmail, password: regPassword })
       );
-      if (registerStudent.fulfilled.match(result)) navigate("/");
     }
   };
+
+  const handleResendVerification = async (email: string) => {
+    setResending(true);
+    setResendMsg(null);
+    try {
+      const result = await api.post<{ message: string }>("/auth/resend-verification", { email });
+      setResendMsg(result.message);
+    } catch (err: any) {
+      setResendMsg(parseApiError(err));
+    }
+    setResending(false);
+  };
+
+  if (registrationSuccess) {
+    return (
+      <div className="container flex items-center justify-center py-12">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <div className="flex justify-center mb-3">
+              <div className="rounded-full bg-emerald-100 p-3">
+                <User className="h-8 w-8 text-emerald-600" />
+              </div>
+            </div>
+            <CardTitle>Check Your Email</CardTitle>
+            <CardDescription>
+              We've sent a verification link to <strong>{regEmail}</strong>.
+              Please check your inbox and click the link to activate your account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => handleResendVerification(regEmail)}
+              disabled={resending}
+            >
+              {resending ? "Sending..." : "Resend Verification Email"}
+            </Button>
+            {resendMsg && (
+              <p className="text-sm text-muted-foreground">{resendMsg}</p>
+            )}
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => dispatch(clearRegistrationSuccess())}
+            >
+              Back to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container flex items-center justify-center py-12">
@@ -102,11 +155,23 @@ function AuthForms() {
         </div>
 
         {error && (
-          <div
-            className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive mb-4 cursor-pointer"
-            onClick={() => dispatch(clearError())}
-          >
-            {error}
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive mb-4 space-y-2">
+            <p className="cursor-pointer" onClick={() => dispatch(clearError())}>{error}</p>
+            {needsVerification && verifyEmail && (
+              <div className="flex flex-col gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleResendVerification(verifyEmail)}
+                  disabled={resending}
+                  className="w-full text-destructive border-destructive/30 hover:bg-destructive/10"
+                >
+                  {resending ? "Sending..." : "Resend Verification Email"}
+                </Button>
+                {resendMsg && <p className="text-xs text-muted-foreground">{resendMsg}</p>}
+              </div>
+            )}
           </div>
         )}
 

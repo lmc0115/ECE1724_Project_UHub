@@ -30,6 +30,8 @@ model Student {
   name              String         @db.VarChar(120)
   email             String         @unique @db.VarChar(255)
   hashedPassword    String         @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean        @default(false) @map("email_verified")
+  verificationToken String?        @map("verification_token") @db.VarChar(255)
   avatarUrl         String?        @map("avatar_url") @db.Text
   ipAddress         String?        @map("ip_address") @db.VarChar(45)
   deviceFingerprint String?        @map("device_fingerprint") @db.VarChar(64)
@@ -46,6 +48,8 @@ model Organizer {
   name              String   @db.VarChar(120)
   email             String   @unique @db.VarChar(255)
   hashedPassword    String   @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  verificationToken String?  @map("verification_token") @db.VarChar(255)
   organizationName  String   @map("organization_name") @db.VarChar(160)
   avatarUrl         String?  @map("avatar_url") @db.Text
   ipAddress         String?  @map("ip_address") @db.VarChar(45)
@@ -62,6 +66,8 @@ model Staff {
   name              String   @db.VarChar(120)
   email             String   @unique @db.VarChar(255)
   hashedPassword    String   @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  verificationToken String?  @map("verification_token") @db.VarChar(255)
   avatarUrl         String?  @map("avatar_url") @db.Text
   ipAddress         String?  @map("ip_address") @db.VarChar(45)
   deviceFingerprint String?  @map("device_fingerprint") @db.VarChar(64)

@@ -7,6 +7,9 @@ interface AuthState {
   token: string | null;
   loading: boolean;
   error: string | null;
+  registrationSuccess: boolean;
+  needsVerification: boolean;
+  verifyEmail: string | null;
 }
 
 const initialState: AuthState = {
@@ -14,6 +17,9 @@ const initialState: AuthState = {
   token: localStorage.getItem("token"),
   loading: false,
   error: null,
+  registrationSuccess: false,
+  needsVerification: false,
+  verifyEmail: null,
 };
 
 export const login = createAsyncThunk(
@@ -24,10 +30,23 @@ export const login = createAsyncThunk(
       setToken(data.token);
       return data;
     } catch (err: any) {
-      return rejectWithValue(parseApiError(err));
+      try {
+        const parsed = JSON.parse(err.message);
+        if (parsed.needsVerification) {
+          return rejectWithValue({ needsVerification: true, verifyEmail: parsed.verifyEmail, message: parsed.error });
+        }
+        return rejectWithValue(parsed.error || parsed.message || "An error occurred");
+      } catch {
+        return rejectWithValue(err.message || "An error occurred");
+      }
     }
   }
 );
+
+interface RegisterResponse {
+  message: string;
+  emailSent: boolean;
+}
 
 export const registerStudent = createAsyncThunk(
   "auth/registerStudent",
@@ -36,9 +55,7 @@ export const registerStudent = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const data = await api.post<AuthResponse>("/auth/register/student", payload);
-      setToken(data.token);
-      return data;
+      return await api.post<RegisterResponse>("/auth/register/student", payload);
     } catch (err: any) {
       return rejectWithValue(parseApiError(err));
     }
@@ -52,9 +69,7 @@ export const registerOrganizer = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const data = await api.post<AuthResponse>("/auth/register/organizer", payload);
-      setToken(data.token);
-      return data;
+      return await api.post<RegisterResponse>("/auth/register/organizer", payload);
     } catch (err: any) {
       return rejectWithValue(parseApiError(err));
     }
@@ -68,9 +83,7 @@ export const registerStaff = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const data = await api.post<AuthResponse>("/auth/register/staff", payload);
-      setToken(data.token);
-      return data;
+      return await api.post<RegisterResponse>("/auth/register/staff", payload);
     } catch (err: any) {
       return rejectWithValue(parseApiError(err));
     }
@@ -122,10 +135,18 @@ const authSlice = createSlice({
       state.user = null;
       state.token = null;
       state.error = null;
+      state.registrationSuccess = false;
+      state.needsVerification = false;
+      state.verifyEmail = null;
       clearToken();
     },
     clearError(state) {
       state.error = null;
+      state.needsVerification = false;
+      state.verifyEmail = null;
+    },
+    clearRegistrationSuccess(state) {
+      state.registrationSuccess = false;
     },
   },
   extraReducers: (builder) => {
@@ -141,16 +162,23 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        const payload = action.payload as any;
+        if (payload?.needsVerification) {
+          state.needsVerification = true;
+          state.verifyEmail = payload.verifyEmail ?? null;
+          state.error = payload.message ?? "Please verify your email before logging in.";
+        } else {
+          state.error = typeof payload === "string" ? payload : "An error occurred";
+        }
       })
       .addCase(registerStudent.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.registrationSuccess = false;
       })
-      .addCase(registerStudent.fulfilled, (state, action) => {
+      .addCase(registerStudent.fulfilled, (state) => {
         state.loading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.registrationSuccess = true;
       })
       .addCase(registerStudent.rejected, (state, action) => {
         state.loading = false;
@@ -159,11 +187,11 @@ const authSlice = createSlice({
       .addCase(registerOrganizer.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.registrationSuccess = false;
       })
-      .addCase(registerOrganizer.fulfilled, (state, action) => {
+      .addCase(registerOrganizer.fulfilled, (state) => {
         state.loading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.registrationSuccess = true;
       })
       .addCase(registerOrganizer.rejected, (state, action) => {
         state.loading = false;
@@ -172,11 +200,11 @@ const authSlice = createSlice({
       .addCase(registerStaff.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.registrationSuccess = false;
       })
-      .addCase(registerStaff.fulfilled, (state, action) => {
+      .addCase(registerStaff.fulfilled, (state) => {
         state.loading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.registrationSuccess = true;
       })
       .addCase(registerStaff.rejected, (state, action) => {
         state.loading = false;
@@ -204,5 +232,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, clearRegistrationSuccess } = authSlice.actions;
 export default authSlice.reducer;

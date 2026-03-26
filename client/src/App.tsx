@@ -8,6 +8,7 @@ import { AccountPage } from "@/pages/AccountPage";
 import { StaffCheckInPage } from "@/pages/StaffCheckInPage";
 import { OrganizerEventsPage } from "@/pages/OrganizerEventsPage";
 import { EventFormPage } from "@/pages/EventFormPage";
+import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { fetchMe } from "@/store/authSlice";
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/organizer/events" element={<OrganizerEventsPage />} />
         <Route path="/organizer/events/new" element={<EventFormPage />} />
         <Route path="/organizer/events/:eventId/edit" element={<EventFormPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/account" element={<AccountPage />} />
       </Routes>
     </div>
