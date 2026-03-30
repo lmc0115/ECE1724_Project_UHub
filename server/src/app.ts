@@ -9,6 +9,9 @@ const __dirname = path.dirname(__filename);
 
 export const app = express();
 
+// Trust the first proxy hop (fly.io) so req.ip reflects the real client IP
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: "http://localhost:5173"

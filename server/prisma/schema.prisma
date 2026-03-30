@@ -26,42 +26,54 @@ enum EventStatus {
 }
 
 model Student {
-  id             String         @id @default(uuid()) @db.Uuid
-  name           String         @db.VarChar(120)
-  email          String         @unique @db.VarChar(255)
-  hashedPassword String         @map("hashed_password") @db.VarChar(255)
-  avatarUrl      String?        @map("avatar_url") @db.Text
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
-  registrations  Registration[]
-  notifications  Notification[]
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String         @db.VarChar(120)
+  email             String         @unique @db.VarChar(255)
+  hashedPassword    String         @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean        @default(false) @map("email_verified")
+  verificationToken String?        @map("verification_token") @db.VarChar(255)
+  avatarUrl         String?        @map("avatar_url") @db.Text
+  ipAddress         String?        @map("ip_address") @db.VarChar(45)
+  deviceFingerprint String?        @map("device_fingerprint") @db.VarChar(64)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  registrations     Registration[]
+  notifications     Notification[]
 
   @@map("students")
 }
 
 model Organizer {
-  id               String   @id @default(uuid()) @db.Uuid
-  name             String   @db.VarChar(120)
-  email            String   @unique @db.VarChar(255)
-  hashedPassword   String   @map("hashed_password") @db.VarChar(255)
-  organizationName String   @map("organization_name") @db.VarChar(160)
-  avatarUrl        String?  @map("avatar_url") @db.Text
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  events           Event[]
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @db.VarChar(120)
+  email             String   @unique @db.VarChar(255)
+  hashedPassword    String   @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  verificationToken String?  @map("verification_token") @db.VarChar(255)
+  organizationName  String   @map("organization_name") @db.VarChar(160)
+  avatarUrl         String?  @map("avatar_url") @db.Text
+  ipAddress         String?  @map("ip_address") @db.VarChar(45)
+  deviceFingerprint String?  @map("device_fingerprint") @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  events            Event[]
 
   @@map("organizers")
 }
 
 model Staff {
-  id               String   @id @default(uuid()) @db.Uuid
-  name             String   @db.VarChar(120)
-  email            String   @unique @db.VarChar(255)
-  hashedPassword   String   @map("hashed_password") @db.VarChar(255)
-  avatarUrl        String?  @map("avatar_url") @db.Text
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  validatedTickets Ticket[] @relation("TicketValidatedByStaff")
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @db.VarChar(120)
+  email             String   @unique @db.VarChar(255)
+  hashedPassword    String   @map("hashed_password") @db.VarChar(255)
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  verificationToken String?  @map("verification_token") @db.VarChar(255)
+  avatarUrl         String?  @map("avatar_url") @db.Text
+  ipAddress         String?  @map("ip_address") @db.VarChar(45)
+  deviceFingerprint String?  @map("device_fingerprint") @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  validatedTickets  Ticket[] @relation("TicketValidatedByStaff")
 
   @@map("staff")
 }

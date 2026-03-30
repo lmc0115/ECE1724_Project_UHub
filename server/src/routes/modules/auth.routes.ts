@@ -20,11 +20,13 @@ Routes:
 
 import { Request, Response, Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
 import { generatePresignedUploadUrl, isAllowedImageType, keyFromPublicUrl, deleteS3Object } from "../../lib/s3.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
+import { sendVerificationEmail } from "../../lib/email.js";
 import {
   AuthPayload,
   UserRole,
@@ -41,6 +43,31 @@ export const authRouter = Router();
 const SALT_ROUNDS = 12;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns the real client IP, respecting X-Forwarded-For set by fly.io's proxy. */
+const getClientIp = (req: Request): string | null => {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    return (typeof forwarded === "string" ? forwarded : forwarded[0])
+      .split(",")[0]
+      .trim();
+  }
+  return req.ip ?? req.socket?.remoteAddress ?? null;
+};
+
+/**
+ * Builds a stable server-side device fingerprint from request headers.
+ * Returns a 64-char hex SHA-256 digest — no client-side code required.
+ */
+const getDeviceFingerprint = (req: Request): string => {
+  const components = [
+    req.headers["user-agent"] ?? "",
+    req.headers["accept-language"] ?? "",
+    req.headers["accept"] ?? "",
+    req.headers["accept-encoding"] ?? ""
+  ].join("|");
+  return crypto.createHash("sha256").update(components).digest("hex");
+};
 
 const signToken = (sub: string, role: UserRole): string =>
   jwt.sign({ sub, role } satisfies AuthPayload, env.JWT_SECRET, {
@@ -68,31 +95,40 @@ authRouter.post("/register/student", async (req: Request, res: Response) => {
     }
 
     const existing = await prisma.student.findUnique({ where: { email } });
-    if (existing) {
+    if (existing && existing.emailVerified) {
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const student = await prisma.student.create({
-      data: {
-        name,
-        email,
-        hashedPassword,
-        avatarUrl: avatarUrl ?? null
-      }
-    });
+    const verificationToken = crypto.randomUUID();
 
-    const token = signToken(student.id, "student");
+    let student;
+    if (existing && !existing.emailVerified) {
+      student = await prisma.student.update({
+        where: { id: existing.id },
+        data: { name, hashedPassword, verificationToken, avatarUrl: avatarUrl ?? null },
+      });
+    } else {
+      student = await prisma.student.create({
+        data: {
+          name,
+          email,
+          hashedPassword,
+          verificationToken,
+          avatarUrl: avatarUrl ?? null,
+          ipAddress: getClientIp(req),
+          deviceFingerprint: getDeviceFingerprint(req)
+        }
+      });
+    }
+
+    await sendVerificationEmail(email, name, verificationToken, "student").catch((err) =>
+      console.error("Failed to send verification email:", err)
+    );
 
     return res.status(201).json({
-      token,
-      user: {
-        id:        student.id,
-        name:      student.name,
-        email:     student.email,
-        role:      "student" as UserRole,
-        avatarUrl: student.avatarUrl
-      }
+      message: "Registration successful. Please check your email to verify your account.",
+      emailSent: true,
     });
   } catch (error) {
     console.error("Register student error:", error);
@@ -119,33 +155,41 @@ authRouter.post("/register/organizer", async (req: Request, res: Response) => {
     }
 
     const existing = await prisma.organizer.findUnique({ where: { email } });
-    if (existing) {
+    if (existing && existing.emailVerified) {
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const organizer = await prisma.organizer.create({
-      data: {
-        name,
-        email,
-        hashedPassword,
-        organizationName,
-        avatarUrl: avatarUrl ?? null
-      }
-    });
+    const verificationToken = crypto.randomUUID();
 
-    const token = signToken(organizer.id, "organizer");
+    let organizer;
+    if (existing && !existing.emailVerified) {
+      organizer = await prisma.organizer.update({
+        where: { id: existing.id },
+        data: { name, hashedPassword, verificationToken, organizationName, avatarUrl: avatarUrl ?? null },
+      });
+    } else {
+      organizer = await prisma.organizer.create({
+        data: {
+          name,
+          email,
+          hashedPassword,
+          verificationToken,
+          organizationName,
+          avatarUrl: avatarUrl ?? null,
+          ipAddress: getClientIp(req),
+          deviceFingerprint: getDeviceFingerprint(req)
+        }
+      });
+    }
+
+    await sendVerificationEmail(email, name, verificationToken, "organizer").catch((err) =>
+      console.error("Failed to send verification email:", err)
+    );
 
     return res.status(201).json({
-      token,
-      user: {
-        id:               organizer.id,
-        name:             organizer.name,
-        email:            organizer.email,
-        role:             "organizer" as UserRole,
-        organizationName: organizer.organizationName,
-        avatarUrl:        organizer.avatarUrl
-      }
+      message: "Registration successful. Please check your email to verify your account.",
+      emailSent: true,
     });
   } catch (error) {
     console.error("Register organizer error:", error);
@@ -170,26 +214,40 @@ authRouter.post("/register/staff", async (req: Request, res: Response) => {
     }
 
     const existing = await prisma.staff.findUnique({ where: { email } });
-    if (existing) {
+    if (existing && existing.emailVerified) {
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const staff = await prisma.staff.create({
-      data: { name, email, hashedPassword, avatarUrl: avatarUrl ?? null }
-    });
+    const verificationToken = crypto.randomUUID();
 
-    const token = signToken(staff.id, "staff");
+    let staff;
+    if (existing && !existing.emailVerified) {
+      staff = await prisma.staff.update({
+        where: { id: existing.id },
+        data: { name, hashedPassword, verificationToken, avatarUrl: avatarUrl ?? null },
+      });
+    } else {
+      staff = await prisma.staff.create({
+        data: {
+          name,
+          email,
+          hashedPassword,
+          verificationToken,
+          avatarUrl: avatarUrl ?? null,
+          ipAddress: getClientIp(req),
+          deviceFingerprint: getDeviceFingerprint(req)
+        }
+      });
+    }
+
+    await sendVerificationEmail(email, name, verificationToken, "staff").catch((err) =>
+      console.error("Failed to send verification email:", err)
+    );
 
     return res.status(201).json({
-      token,
-      user: {
-        id:        staff.id,
-        name:      staff.name,
-        email:     staff.email,
-        role:      "staff" as UserRole,
-        avatarUrl: staff.avatarUrl
-      }
+      message: "Registration successful. Please check your email to verify your account.",
+      emailSent: true,
     });
   } catch (error) {
     console.error("Register staff error:", error);
@@ -212,6 +270,9 @@ authRouter.post("/login", async (req: Request, res: Response) => {
     if (student) {
       const match = await bcrypt.compare(password, student.hashedPassword);
       if (!match) return res.status(401).json({ error: "Invalid credentials." });
+      if (!student.emailVerified) {
+        return res.status(403).json({ error: "Please verify your email before logging in.", needsVerification: true, verifyEmail: email });
+      }
 
       const token = signToken(student.id, "student");
       return res.status(200).json({
@@ -230,6 +291,9 @@ authRouter.post("/login", async (req: Request, res: Response) => {
     if (organizer) {
       const match = await bcrypt.compare(password, organizer.hashedPassword);
       if (!match) return res.status(401).json({ error: "Invalid credentials." });
+      if (!organizer.emailVerified) {
+        return res.status(403).json({ error: "Please verify your email before logging in.", needsVerification: true, verifyEmail: email });
+      }
 
       const token = signToken(organizer.id, "organizer");
       return res.status(200).json({
@@ -249,6 +313,9 @@ authRouter.post("/login", async (req: Request, res: Response) => {
     if (staff) {
       const match = await bcrypt.compare(password, staff.hashedPassword);
       if (!match) return res.status(401).json({ error: "Invalid credentials." });
+      if (!staff.emailVerified) {
+        return res.status(403).json({ error: "Please verify your email before logging in.", needsVerification: true, verifyEmail: email });
+      }
 
       const token = signToken(staff.id, "staff");
       return res.status(200).json({
@@ -267,6 +334,100 @@ authRouter.post("/login", async (req: Request, res: Response) => {
     return res.status(401).json({ error: "Invalid credentials." });
   } catch (error) {
     console.error("Login error:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// ── GET /api/auth/verify-email ────────────────────────────────────────────────
+
+authRouter.get("/verify-email", async (req: Request, res: Response) => {
+  try {
+    const { token, role } = req.query as { token?: string; role?: string };
+
+    if (!token || !role) {
+      return res.status(400).json({ error: "token and role are required." });
+    }
+
+    if (role === "student") {
+      const student = await prisma.student.findFirst({ where: { verificationToken: token } });
+      if (!student) return res.status(400).json({ error: "Invalid or expired verification link." });
+      if (student.emailVerified) return res.status(200).json({ message: "Email already verified. You can log in." });
+      await prisma.student.update({
+        where: { id: student.id },
+        data: { emailVerified: true, verificationToken: null },
+      });
+      return res.status(200).json({ message: "Email verified successfully. You can now log in." });
+    }
+
+    if (role === "organizer") {
+      const organizer = await prisma.organizer.findFirst({ where: { verificationToken: token } });
+      if (!organizer) return res.status(400).json({ error: "Invalid or expired verification link." });
+      if (organizer.emailVerified) return res.status(200).json({ message: "Email already verified. You can log in." });
+      await prisma.organizer.update({
+        where: { id: organizer.id },
+        data: { emailVerified: true, verificationToken: null },
+      });
+      return res.status(200).json({ message: "Email verified successfully. You can now log in." });
+    }
+
+    if (role === "staff") {
+      const staff = await prisma.staff.findFirst({ where: { verificationToken: token } });
+      if (!staff) return res.status(400).json({ error: "Invalid or expired verification link." });
+      if (staff.emailVerified) return res.status(200).json({ message: "Email already verified. You can log in." });
+      await prisma.staff.update({
+        where: { id: staff.id },
+        data: { emailVerified: true, verificationToken: null },
+      });
+      return res.status(200).json({ message: "Email verified successfully. You can now log in." });
+    }
+
+    return res.status(400).json({ error: "Invalid role." });
+  } catch (error) {
+    console.error("Verify email error:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// ── POST /api/auth/resend-verification ───────────────────────────────────────
+
+authRouter.post("/resend-verification", async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body as { email?: string };
+
+    if (!email) {
+      return res.status(400).json({ error: "email is required." });
+    }
+
+    const student = await prisma.student.findUnique({ where: { email } });
+    if (student) {
+      if (student.emailVerified) return res.status(400).json({ error: "Email is already verified." });
+      const newToken = crypto.randomUUID();
+      await prisma.student.update({ where: { id: student.id }, data: { verificationToken: newToken } });
+      await sendVerificationEmail(email, student.name, newToken, "student");
+      return res.status(200).json({ message: "Verification email sent." });
+    }
+
+    const organizer = await prisma.organizer.findUnique({ where: { email } });
+    if (organizer) {
+      if (organizer.emailVerified) return res.status(400).json({ error: "Email is already verified." });
+      const newToken = crypto.randomUUID();
+      await prisma.organizer.update({ where: { id: organizer.id }, data: { verificationToken: newToken } });
+      await sendVerificationEmail(email, organizer.name, newToken, "organizer");
+      return res.status(200).json({ message: "Verification email sent." });
+    }
+
+    const staff = await prisma.staff.findUnique({ where: { email } });
+    if (staff) {
+      if (staff.emailVerified) return res.status(400).json({ error: "Email is already verified." });
+      const newToken = crypto.randomUUID();
+      await prisma.staff.update({ where: { id: staff.id }, data: { verificationToken: newToken } });
+      await sendVerificationEmail(email, staff.name, newToken, "staff");
+      return res.status(200).json({ message: "Verification email sent." });
+    }
+
+    return res.status(200).json({ message: "Verification email sent." });
+  } catch (error) {
+    console.error("Resend verification error:", error);
     return res.status(500).json({ error: "Internal server error." });
   }
 });
