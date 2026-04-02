@@ -343,6 +343,7 @@ export function EventDetailPage() {
                 {exportingCsv ? "Exporting..." : "Export Attendees CSV"}
               </Button>
             </CardHeader>
+
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border bg-muted/50 p-4">
@@ -385,6 +386,7 @@ export function EventDetailPage() {
           </Card>
         )}
 
+        {/* Registration section for students */}
         {user?.role === "student" && event.status === "PUBLISHED" && (
           <Card>
             <CardContent className="pt-6">

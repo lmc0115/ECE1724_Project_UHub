@@ -31,7 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export function AccountPage() {
   const dispatch = useAppDispatch();
-  const { user, loading, error } = useAppSelector((s) => s.auth);
+  const { user } = useAppSelector((s) => s.auth);
 
   if (user) return <ProfileView />;
   return <AuthForms />;
@@ -108,8 +108,8 @@ function AuthForms() {
         <Card className="w-full max-w-md text-center">
           <CardHeader>
             <div className="flex justify-center mb-3">
-              <div className="rounded-full bg-emerald-100 p-3">
-                <User className="h-8 w-8 text-emerald-600" />
+              <div className="rounded-full bg-emerald-500/15 p-3">
+                <User className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
             <CardTitle>Check Your Email</CardTitle>

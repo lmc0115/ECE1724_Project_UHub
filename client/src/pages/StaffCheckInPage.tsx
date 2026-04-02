@@ -109,7 +109,6 @@ function CheckInView() {
           isRunningRef.current = true;
           setScanning(true);
         } else {
-          // mode switched while scanner was starting — stop immediately
           isRunningRef.current = true;
           await safeStop(html5QrCode);
           scannerRef.current = null;
@@ -252,25 +251,38 @@ function CheckInView() {
       )}
 
       {result && (
-        <Card className={result.success
-          ? "border-emerald-200 bg-emerald-50"
-          : "border-red-200 bg-red-50"
-        }>
+        <Card
+          className={
+            result.success
+              ? "border-emerald-500/30 bg-emerald-500/10"
+              : "border-red-500/30 bg-red-500/10"
+          }
+        >
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center gap-2">
               {result.success ? (
-                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
               ) : (
-                <XCircle className="h-6 w-6 text-red-600" />
+                <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
               )}
-              <span className={`font-semibold text-lg ${
-                result.success ? "text-emerald-800" : "text-red-800"
-              }`}>
+              <span
+                className={`font-semibold text-lg ${
+                  result.success
+                    ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-red-700 dark:text-red-400"
+                }`}
+              >
                 {result.success ? "Check-In Successful" : "Check-In Failed"}
               </span>
             </div>
 
-            <p className={`text-sm ${result.success ? "text-emerald-700" : "text-red-700"}`}>
+            <p
+              className={`text-sm ${
+                result.success
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : "text-red-700 dark:text-red-300"
+              }`}
+            >
               {result.message}
             </p>
 

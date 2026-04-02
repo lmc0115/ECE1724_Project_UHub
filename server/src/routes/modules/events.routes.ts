@@ -19,13 +19,18 @@ Helper Functions:
 
 import { Request, Response, Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import { generatePresignedUploadUrl, isAllowedImageType, keyFromPublicUrl, deleteS3Object } from "../../lib/s3.js";
+import {
+  generatePresignedUploadUrl,
+  isAllowedImageType,
+  keyFromPublicUrl,
+  deleteS3Object,
+} from "../../lib/s3.js";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware.js";
 import {
   EventRequestBody,
   EventStatusValue,
   CreateEventData,
-  UpdateEventData
+  UpdateEventData,
 } from "../../types/type.js";
 
 export const eventRouter = Router();
@@ -67,14 +72,21 @@ const normalizeCreateInput = (body: EventRequestBody) => {
 
   if (!title) {
     return {
-      error: "Event name is required."
+      error: "Event name is required.",
     } as const;
   }
 
-  if (!body.description || !body.location || !body.organizerId || dateTime == null || capacity == null || ticketPrice == null) {
+  if (
+    !body.description ||
+    !body.location ||
+    !body.organizerId ||
+    dateTime == null ||
+    capacity == null ||
+    ticketPrice == null
+  ) {
     return {
       error:
-        "description, location, dateTime, capacity, ticketPrice, and organizerId are required."
+        "description, location, dateTime, capacity, ticketPrice, and organizerId are required.",
     } as const;
   }
 
@@ -87,11 +99,11 @@ const normalizeCreateInput = (body: EventRequestBody) => {
     ticketPrice,
     coverImageUrl: body.coverImageUrl ?? null,
     status: (body.status ?? "DRAFT") as EventStatusValue,
-    organizerId: body.organizerId
+    organizerId: body.organizerId,
   };
 
   return {
-    data
+    data,
   } as const;
 };
 
@@ -103,7 +115,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
     const title = body.name ?? body.title;
     if (!title) {
       return {
-        error: "Event name cannot be null or empty."
+        error: "Event name cannot be null or empty.",
       } as const;
     }
     data.title = title;
@@ -112,7 +124,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
   if (body.description !== undefined) {
     if (!body.description) {
       return {
-        error: "description cannot be null or empty."
+        error: "description cannot be null or empty.",
       } as const;
     }
     data.description = body.description;
@@ -121,7 +133,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
   if (body.location !== undefined) {
     if (!body.location) {
       return {
-        error: "location cannot be null or empty."
+        error: "location cannot be null or empty.",
       } as const;
     }
     data.location = body.location;
@@ -131,7 +143,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
     const dateTime = parseDateTime(body.dateTime);
     if (dateTime === null) {
       return {
-        error: "dateTime must be a valid date."
+        error: "dateTime must be a valid date.",
       } as const;
     }
     data.dateTime = dateTime;
@@ -141,7 +153,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
     const capacity = parseNumber(body.capacity);
     if (capacity === null) {
       return {
-        error: "capacity must be a valid number."
+        error: "capacity must be a valid number.",
       } as const;
     }
     data.capacity = capacity;
@@ -151,7 +163,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
     const ticketPrice = parseNumber(body.ticketPrice);
     if (ticketPrice === null) {
       return {
-        error: "ticketPrice must be a valid number."
+        error: "ticketPrice must be a valid number.",
       } as const;
     }
     data.ticketPrice = ticketPrice;
@@ -164,7 +176,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
   if (body.status !== undefined) {
     if (!body.status) {
       return {
-        error: "status cannot be null."
+        error: "status cannot be null.",
       } as const;
     }
     data.status = body.status as EventStatusValue;
@@ -173,7 +185,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
   if (body.organizerId !== undefined) {
     if (!body.organizerId) {
       return {
-        error: "organizerId cannot be null or empty."
+        error: "organizerId cannot be null or empty.",
       } as const;
     }
     data.organizerId = body.organizerId;
@@ -181,7 +193,7 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
 
   if (Object.keys(data).length === 0) {
     return {
-      error: "At least one field is required to update the event."
+      error: "At least one field is required to update the event.",
     } as const;
   }
 
@@ -192,8 +204,46 @@ const normalizeUpdateInput = (body: EventRequestBody) => {
 const sendServerError = (res: Response, error: unknown) => {
   console.error("Event route error:", error);
   return res.status(500).json({
-    error: "Internal server error"
+    error: "Internal server error",
   });
+};
+
+type EventStatsRegistration = {
+  paymentStatus: "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+  ticket: {
+    redemptionStatus: "NOT_REDEEMED" | "REDEEMED";
+  } | null;
+};
+
+type EventWithStatsSource = {
+  ticketPrice: number | { toString(): string };
+  registrations: EventStatsRegistration[];
+  [key: string]: unknown;
+};
+
+const attachEventStats = (event: EventWithStatsSource) => {
+  const activeRegistrations = event.registrations.filter(
+    (registration) =>
+      registration.paymentStatus !== "FAILED" &&
+      registration.paymentStatus !== "REFUNDED"
+  );
+
+  const paidRegistrations = event.registrations.filter(
+    (registration) => registration.paymentStatus === "PAID"
+  );
+
+  const checkedInCount = event.registrations.filter(
+    (registration) => registration.ticket?.redemptionStatus === "REDEEMED"
+  ).length;
+
+  const { registrations, ...eventData } = event;
+
+  return {
+    ...eventData,
+    registeredCount: activeRegistrations.length,
+    checkedInCount,
+    revenue: paidRegistrations.length * Number(event.ticketPrice),
+  };
 };
 
 // ── POST /api/events/upload-url ───────────────────────────────────────────────
@@ -211,7 +261,7 @@ eventRouter.post("/upload-url", requireAuth, async (req: Request, res: Response)
     }
     if (!isAllowedImageType(contentType)) {
       return res.status(400).json({
-        error: "Unsupported image type. Allowed: image/jpeg, image/png, image/webp, image/gif."
+        error: "Unsupported image type. Allowed: image/jpeg, image/png, image/webp, image/gif.",
       });
     }
 
@@ -231,30 +281,34 @@ eventRouter.post("/upload-url", requireAuth, async (req: Request, res: Response)
 // ── DELETE /api/events/:eventId/cover-image ───────────────────────────────────
 // Removes the cover image from S3 and clears the coverImageUrl on the event.
 
-eventRouter.delete("/:eventId/cover-image", requireAuth, async (req: Request<{ eventId: string }>, res: Response) => {
-  try {
-    const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
+eventRouter.delete(
+  "/:eventId/cover-image",
+  requireAuth,
+  async (req: Request<{ eventId: string }>, res: Response) => {
+    try {
+      const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
 
-    if (!event) {
-      return res.status(404).json({ error: "Event not found" });
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      if (!event.coverImageUrl) {
+        return res.status(400).json({ error: "This event has no cover image." });
+      }
+
+      const oldKey = keyFromPublicUrl(event.coverImageUrl);
+      if (oldKey) await deleteS3Object(oldKey).catch(() => null);
+
+      const updated = await prisma.event.update({
+        where: { id: String(req.params.eventId) },
+        data: { coverImageUrl: null },
+      });
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      return sendServerError(res, error);
     }
-    if (!event.coverImageUrl) {
-      return res.status(400).json({ error: "This event has no cover image." });
-    }
-
-    const oldKey = keyFromPublicUrl(event.coverImageUrl);
-    if (oldKey) await deleteS3Object(oldKey).catch(() => null);
-
-    const updated = await prisma.event.update({
-      where: { id: String(req.params.eventId) },
-      data:  { coverImageUrl: null }
-    });
-
-    return res.status(200).json(updated);
-  } catch (error) {
-    return sendServerError(res, error);
   }
-});
+);
 
 //Here starts the HTTP requests
 // GET /api/events - list all events
@@ -262,8 +316,8 @@ eventRouter.get("/", async (_req, res) => {
   try {
     const events = await prisma.event.findMany({
       orderBy: {
-        createdAt: "desc"
-      }
+        createdAt: "desc",
+      },
     });
 
     return res.status(200).json(events);
@@ -279,8 +333,23 @@ eventRouter.get("/my", requireAuth, requireRole("organizer"), async (req, res) =
     const events = await prisma.event.findMany({
       where: { organizerId },
       orderBy: { createdAt: "desc" },
+      include: {
+        registrations: {
+          select: {
+            paymentStatus: true,
+            ticket: {
+              select: {
+                redemptionStatus: true,
+              },
+            },
+          },
+        },
+      },
     });
-    return res.status(200).json(events);
+
+    const eventsWithStats = events.map((event) => attachEventStats(event));
+
+    return res.status(200).json(eventsWithStats);
   } catch (error) {
     return sendServerError(res, error);
   }
@@ -291,17 +360,38 @@ eventRouter.get("/:eventId", async (req, res) => {
   try {
     const event = await prisma.event.findUnique({
       where: {
-        id: req.params.eventId
-      }
+        id: req.params.eventId,
+      },
+      include: {
+        organizer: {
+          select: {
+            id: true,
+            name: true,
+            organizationName: true,
+          },
+        },
+        registrations: {
+          select: {
+            paymentStatus: true,
+            ticket: {
+              select: {
+                redemptionStatus: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!event) {
       return res.status(404).json({
-        error: "Event not found"
+        error: "Event not found",
       });
     }
 
-    return res.status(200).json(event);
+    const eventWithStats = attachEventStats(event);
+
+    return res.status(200).json(eventWithStats);
   } catch (error) {
     return sendServerError(res, error);
   }
@@ -312,7 +402,7 @@ eventRouter.post("/", requireAuth, requireRole("organizer"), async (req, res) =>
   try {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({
-        error: "Request body is required."
+        error: "Request body is required.",
       });
     }
 
@@ -321,12 +411,12 @@ eventRouter.post("/", requireAuth, requireRole("organizer"), async (req, res) =>
 
     if ("error" in normalized) {
       return res.status(400).json({
-        error: normalized.error
+        error: normalized.error,
       });
     }
 
     const event = await prisma.event.create({
-      data: normalized.data
+      data: normalized.data,
     });
 
     return res.status(201).json(event);
@@ -336,64 +426,74 @@ eventRouter.post("/", requireAuth, requireRole("organizer"), async (req, res) =>
 });
 
 // PUT /api/events/:eventId - update an existing event (owner organizer only)
-eventRouter.put("/:eventId", requireAuth, requireRole("organizer"), async (req: Request<{ eventId: string }>, res: Response) => {
-  try {
-    if (!req.body || typeof req.body !== "object") {
-      return res.status(400).json({
-        error: "Request body is required."
+eventRouter.put(
+  "/:eventId",
+  requireAuth,
+  requireRole("organizer"),
+  async (req: Request<{ eventId: string }>, res: Response) => {
+    try {
+      if (!req.body || typeof req.body !== "object") {
+        return res.status(400).json({
+          error: "Request body is required.",
+        });
+      }
+
+      const existingEvent = await prisma.event.findUnique({
+        where: { id: req.params.eventId },
       });
+
+      if (!existingEvent) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      if (existingEvent.organizerId !== req.user!.sub) {
+        return res.status(403).json({ error: "You can only edit your own events." });
+      }
+
+      const normalized = normalizeUpdateInput(req.body as EventRequestBody);
+
+      if ("error" in normalized) {
+        return res.status(400).json({ error: normalized.error });
+      }
+
+      const event = await prisma.event.update({
+        where: { id: req.params.eventId },
+        data: normalized.data,
+      });
+
+      return res.status(200).json(event);
+    } catch (error) {
+      return sendServerError(res, error);
     }
-
-    const existingEvent = await prisma.event.findUnique({
-      where: { id: req.params.eventId }
-    });
-
-    if (!existingEvent) {
-      return res.status(404).json({ error: "Event not found" });
-    }
-
-    if (existingEvent.organizerId !== req.user!.sub) {
-      return res.status(403).json({ error: "You can only edit your own events." });
-    }
-
-    const normalized = normalizeUpdateInput(req.body as EventRequestBody);
-
-    if ("error" in normalized) {
-      return res.status(400).json({ error: normalized.error });
-    }
-
-    const event = await prisma.event.update({
-      where: { id: req.params.eventId },
-      data: normalized.data
-    });
-
-    return res.status(200).json(event);
-  } catch (error) {
-    return sendServerError(res, error);
   }
-});
+);
 
 // DELETE /api/events/:eventId - delete an event (owner organizer only)
-eventRouter.delete("/:eventId", requireAuth, requireRole("organizer"), async (req: Request<{ eventId: string }>, res: Response) => {
-  try {
-    const existingEvent = await prisma.event.findUnique({
-      where: { id: req.params.eventId }
-    });
+eventRouter.delete(
+  "/:eventId",
+  requireAuth,
+  requireRole("organizer"),
+  async (req: Request<{ eventId: string }>, res: Response) => {
+    try {
+      const existingEvent = await prisma.event.findUnique({
+        where: { id: req.params.eventId },
+      });
 
-    if (!existingEvent) {
-      return res.status(404).json({ error: "Event not found" });
+      if (!existingEvent) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      if (existingEvent.organizerId !== req.user!.sub) {
+        return res.status(403).json({ error: "You can only delete your own events." });
+      }
+
+      await prisma.event.delete({
+        where: { id: req.params.eventId },
+      });
+
+      return res.status(200).json({ message: "Event deleted successfully" });
+    } catch (error) {
+      return sendServerError(res, error);
     }
-
-    if (existingEvent.organizerId !== req.user!.sub) {
-      return res.status(403).json({ error: "You can only delete your own events." });
-    }
-
-    await prisma.event.delete({
-      where: { id: req.params.eventId }
-    });
-
-    return res.status(200).json({ message: "Event deleted successfully" });
-  } catch (error) {
-    return sendServerError(res, error);
   }
-});
+);
