@@ -44,7 +44,7 @@ COPY --from=server-build /app/server/dist ./server/dist
 # Copy React build into server/public (Express will serve it as static files)
 COPY --from=client-build /app/client/dist ./server/public
 
-EXPOSE 8080
+EXPOSE 4000
 
 WORKDIR /app/server
 

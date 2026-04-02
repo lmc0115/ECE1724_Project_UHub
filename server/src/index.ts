@@ -7,10 +7,10 @@ import { initSocketServer } from "./lib/socket.js";
 
 const server = createServer(app);
 
-initSocketServer(server);
-
 async function start() {
   await connectRedis();
+
+  initSocketServer(server);
 
   server.listen(env.PORT, () => {
     console.log(`UHub server listening on http://localhost:${env.PORT}`);

@@ -2,9 +2,10 @@ import { randomUUID } from "crypto";
 import { Server as HttpServer } from "http";
 import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
 import { env } from "../config/env.js";
 import { prisma } from "./prisma.js";
-import { redisClient } from "./redis.js";
+import { redisClient, redisPubClient, redisSubClient } from "./redis.js";
 import type { AuthPayload } from "../types/type.js";
 
 type SupportedChatRole = "student" | "organizer";
@@ -126,10 +127,12 @@ async function saveMessage(message: ChatMessage) {
 export function initSocketServer(server: HttpServer) {
   const io = new Server(server, {
     cors: {
-      origin: "http://localhost:5173",
+      origin: env.CLIENT_URL,
       credentials: true,
     },
   });
+
+  io.adapter(createAdapter(redisPubClient, redisSubClient));
 
   io.use((socket, next) => {
     try {
