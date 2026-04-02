@@ -23,6 +23,9 @@ export interface Event {
     name: string;
     organizationName: string;
   };
+  registeredCount?: number;
+  checkedInCount?: number;
+  revenue?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +46,16 @@ export interface Ticket {
   qrCodeData: string;
   redemptionStatus: "NOT_REDEEMED" | "REDEEMED";
   redeemedAt?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  eventId: string;
+  userId: string;
+  userName: string;
+  role: "student" | "organizer";
+  content: string;
+  createdAt: string;
 }
 
 export interface AuthResponse {
