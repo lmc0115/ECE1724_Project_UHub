@@ -21,7 +21,7 @@ export default function App() {
   }, [dispatch, token]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <Navbar />
       <Routes>
         <Route path="/" element={<HomePage />} />

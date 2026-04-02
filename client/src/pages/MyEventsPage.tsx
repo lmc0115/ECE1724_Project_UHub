@@ -155,7 +155,7 @@ export function MyEventsPage() {
                       </Button>
 
                       {expandedQr === reg.id && (
-                        <div className="flex flex-col items-center gap-2 mt-3 p-4 bg-white rounded-lg border">
+                        <div className="flex flex-col items-center gap-2 mt-3 p-4 bg-card rounded-lg border shadow-sm">
                           <QRCodeSVG
                             value={reg.ticket.qrCodeData}
                             size={160}

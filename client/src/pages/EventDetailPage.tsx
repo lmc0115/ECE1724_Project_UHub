@@ -111,6 +111,10 @@ export function EventDetailPage() {
 
   const price = Number(event.ticketPrice);
   const isFree = price === 0;
+  const isOwnerOrganizer = user?.role === "organizer" && user.id === event.organizerId;
+  const registeredCount = event.registeredCount ?? 0;
+  const checkedInCount = event.checkedInCount ?? 0;
+  const revenue = Number(event.revenue ?? 0);
 
   return (
     <div className="container py-6 space-y-6 max-w-3xl">
@@ -234,13 +238,54 @@ export function EventDetailPage() {
           </CardContent>
         </Card>
 
+        {isOwnerOrganizer && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Organizer Statistics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Users className="h-4 w-4" />
+                    Registered
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    {registeredCount}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <DollarSign className="h-4 w-4" />
+                    Revenue
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    ${revenue.toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Checked In
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    {checkedInCount}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Registration section for students */}
         {user?.role === "student" && event.status === "PUBLISHED" && (
           <Card>
             <CardContent className="pt-6">
               {myRegistration ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-emerald-600">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-5 w-5" />
                     <span className="font-semibold">You're registered for this event!</span>
                   </div>
@@ -257,7 +302,7 @@ export function EventDetailPage() {
                       </Button>
 
                       {showQr && (
-                        <div className="flex flex-col items-center gap-3 p-6 bg-white rounded-xl border">
+                        <div className="flex flex-col items-center gap-3 p-6 bg-card rounded-xl border shadow-sm">
                           <QRCodeSVG
                             value={myRegistration.ticket.qrCodeData}
                             size={200}

@@ -23,6 +23,9 @@ export interface Event {
     name: string;
     organizationName: string;
   };
+  registeredCount?: number;
+  checkedInCount?: number;
+  revenue?: number;
   createdAt: string;
   updatedAt: string;
 }
