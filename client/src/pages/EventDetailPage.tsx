@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   QrCode,
   X,
+  Download,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { fetchEventById, clearCurrentEvent } from "@/store/eventsSlice";
@@ -23,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LiveChatCard } from "@/components/LiveChatCard";
 
 function formatDateTime(iso: string) {
   const d = new Date(iso);
@@ -47,11 +49,28 @@ function statusVariant(status: string) {
   }
 }
 
+function getFilenameFromDisposition(disposition: string | null, fallback: string) {
+  if (!disposition) return fallback;
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const basicMatch = disposition.match(/filename="?([^"]+)"?/i);
+  if (basicMatch?.[1]) {
+    return basicMatch[1];
+  }
+
+  return fallback;
+}
+
 export function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const dispatch = useAppDispatch();
   const { current: event, loading, error } = useAppSelector((s) => s.events);
   const user = useAppSelector((s) => s.auth.user);
+  const token = useAppSelector((s) => s.auth.token);
   const registrations = useAppSelector((s) => s.registrations.items);
 
   const [registering, setRegistering] = useState(false);
@@ -59,13 +78,27 @@ export function EventDetailPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const myRegistration = registrations.find((r) => r.eventId === eventId);
 
   useEffect(() => {
     if (eventId) dispatch(fetchEventById(eventId));
     if (user && user.role === "student") dispatch(fetchMyRegistrations());
+
+    let intervalId: number | undefined;
+
+    if (eventId && user?.role === "organizer") {
+      intervalId = window.setInterval(() => {
+        dispatch(fetchEventById(eventId));
+      }, 10000);
+    }
+
     return () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
       dispatch(clearCurrentEvent());
     };
   }, [dispatch, eventId, user]);
@@ -89,7 +122,54 @@ export function EventDetailPage() {
     }
   };
 
-  if (loading) {
+  const handleExportCsv = async () => {
+    if (!eventId || !token) return;
+
+    setExportingCsv(true);
+    setExportError(null);
+
+    try {
+      const response = await fetch(`/api/events/${eventId}/export-attendees`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        let message = "Failed to export CSV.";
+        try {
+          const data = await response.json();
+          message = data.error || message;
+        } catch {
+          // ignore json parse failure
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const fallbackName = `event-${eventId}-attendees.csv`;
+      const filename = getFilenameFromDisposition(
+        response.headers.get("content-disposition"),
+        fallbackName
+      );
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setExportError(err.message || "Failed to export CSV.");
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
+  if (loading && !event) {
     return (
       <div className="container flex items-center justify-center py-24">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -97,7 +177,7 @@ export function EventDetailPage() {
     );
   }
 
-  if (error) {
+  if (error && !event) {
     return (
       <div className="container py-6">
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
@@ -111,6 +191,21 @@ export function EventDetailPage() {
 
   const price = Number(event.ticketPrice);
   const isFree = price === 0;
+  const isOwnerOrganizer = user?.role === "organizer" && user.id === event.organizerId;
+  const registeredCount = event.registeredCount ?? 0;
+  const checkedInCount = event.checkedInCount ?? 0;
+  const revenue = Number(event.revenue ?? 0);
+
+  const liveChatEnabled =
+    isOwnerOrganizer || (user?.role === "student" && !!myRegistration);
+
+  const liveChatDisabledMessage = !user
+    ? "Log in to join the live event chat."
+    : user.role === "student" && !myRegistration
+      ? "Register for this event to join the live chat."
+      : user.role === "staff"
+        ? "Live chat is currently available for organizers and registered students only."
+        : "You do not have access to this live chat.";
 
   return (
     <div className="container py-6 space-y-6 max-w-3xl">
@@ -234,13 +329,70 @@ export function EventDetailPage() {
           </CardContent>
         </Card>
 
+        {isOwnerOrganizer && (
+          <Card>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Organizer Statistics</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCsv}
+                disabled={exportingCsv}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {exportingCsv ? "Exporting..." : "Export Attendees CSV"}
+              </Button>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Users className="h-4 w-4" />
+                    Registered
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    {registeredCount}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <DollarSign className="h-4 w-4" />
+                    Revenue
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    ${revenue.toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Checked In
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-foreground">
+                    {checkedInCount}
+                  </p>
+                </div>
+              </div>
+
+              {exportError && (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  {exportError}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Registration section for students */}
         {user?.role === "student" && event.status === "PUBLISHED" && (
           <Card>
             <CardContent className="pt-6">
               {myRegistration ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-emerald-600">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-5 w-5" />
                     <span className="font-semibold">You're registered for this event!</span>
                   </div>
@@ -257,7 +409,7 @@ export function EventDetailPage() {
                       </Button>
 
                       {showQr && (
-                        <div className="flex flex-col items-center gap-3 p-6 bg-white rounded-xl border">
+                        <div className="flex flex-col items-center gap-3 p-6 bg-card rounded-xl border shadow-sm">
                           <QRCodeSVG
                             value={myRegistration.ticket.qrCodeData}
                             size={200}
@@ -331,6 +483,13 @@ export function EventDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        <LiveChatCard
+          eventId={event.id}
+          currentUserId={user?.id}
+          enabled={liveChatEnabled}
+          disabledMessage={liveChatDisabledMessage}
+        />
       </div>
     </div>
   );

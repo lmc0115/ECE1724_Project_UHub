@@ -32,7 +32,7 @@ export function EventCard({ event }: EventCardProps) {
   return (
     <Link
       to={`/events/${event.id}`}
-      className="group flex gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+      className="group flex gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30"
     >
       <div className="h-28 w-28 shrink-0 overflow-hidden rounded-lg bg-muted">
         {event.coverImageUrl ? (
@@ -50,7 +50,7 @@ export function EventCard({ event }: EventCardProps) {
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
         <div className="flex items-center gap-2">
-          <h3 className="truncate text-lg font-semibold group-hover:text-primary transition-colors">
+          <h3 className="truncate text-lg font-semibold text-foreground transition-colors group-hover:text-primary">
             {event.title}
           </h3>
           <Badge variant={statusVariant(event.status)} className="shrink-0">

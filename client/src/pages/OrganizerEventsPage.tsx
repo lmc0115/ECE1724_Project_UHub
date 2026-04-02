@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -8,6 +8,9 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Ticket,
+  BadgeCheck,
+  RefreshCcw,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { fetchMyEvents, deleteEvent } from "@/store/eventsSlice";
@@ -49,10 +52,32 @@ export function OrganizerEventsPage() {
   const { myItems: events, loading } = useAppSelector((s) => s.events);
 
   useEffect(() => {
-    if (user?.role === "organizer") {
+    if (user?.role !== "organizer") return;
+
+    dispatch(fetchMyEvents());
+
+    const intervalId = window.setInterval(() => {
       dispatch(fetchMyEvents());
-    }
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
   }, [dispatch, user]);
+
+  const totalEvents = useMemo(() => {
+    return events.length;
+  }, [events]);
+
+  const totalRegistered = useMemo(() => {
+    return events.reduce((sum, event) => sum + (event.registeredCount ?? 0), 0);
+  }, [events]);
+
+  const totalRevenue = useMemo(() => {
+    return events.reduce((sum, event) => sum + Number(event.revenue ?? 0), 0);
+  }, [events]);
+
+  const totalCheckedIn = useMemo(() => {
+    return events.reduce((sum, event) => sum + (event.checkedInCount ?? 0), 0);
+  }, [events]);
 
   if (!user || user.role !== "organizer") {
     return (
@@ -73,17 +98,82 @@ export function OrganizerEventsPage() {
     dispatch(deleteEvent(id));
   };
 
+  const handleOpenEvent = (id: string) => {
+    navigate(`/events/${id}`);
+  };
+
   return (
     <div className="container py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">My Events</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">My Events</h1>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <RefreshCcw
+              className={`h-4 w-4 ${loading && events.length > 0 ? "animate-spin" : ""}`}
+            />
+            <span>Stats refresh automatically every 10 seconds</span>
+          </div>
+        </div>
+
         <Button onClick={() => navigate("/organizer/events/new")}>
           <Plus className="h-4 w-4 mr-2" />
           Create Event
         </Button>
       </div>
 
-      {loading && (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              Total Events
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Ticket className="h-4 w-4" />
+              Total Registered
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalRegistered}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <DollarSign className="h-4 w-4" />
+              Total Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">
+              ${totalRevenue.toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <BadgeCheck className="h-4 w-4" />
+              Total Checked In
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalCheckedIn}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {loading && events.length === 0 && (
         <div className="flex justify-center py-12">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
@@ -103,8 +193,24 @@ export function OrganizerEventsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {events.map((event) => {
           const price = Number(event.ticketPrice);
+          const revenue = Number(event.revenue ?? 0);
+          const registeredCount = event.registeredCount ?? 0;
+          const checkedInCount = event.checkedInCount ?? 0;
+
           return (
-            <Card key={event.id} className="flex flex-col">
+            <Card
+              key={event.id}
+              className="flex cursor-pointer flex-col transition-shadow hover:shadow-md"
+              onClick={() => handleOpenEvent(event.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleOpenEvent(event.id);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
               {event.coverImageUrl && (
                 <div className="overflow-hidden rounded-t-lg">
                   <img
@@ -114,12 +220,14 @@ export function OrganizerEventsPage() {
                   />
                 </div>
               )}
+
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-lg leading-tight">
                     <Link
                       to={`/events/${event.id}`}
                       className="hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {event.title}
                     </Link>
@@ -129,31 +237,71 @@ export function OrganizerEventsPage() {
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="flex-1 space-y-1.5 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {formatDate(event.dateTime)}
+
+              <CardContent className="flex-1 space-y-4 text-sm text-muted-foreground">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {formatDate(event.dateTime)}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {event.location}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {event.location}
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-foreground">
+                      <Ticket className="h-4 w-4" />
+                      <span className="font-medium">Registered</span>
+                    </div>
+                    <p className="mt-2 text-2xl font-bold text-foreground">
+                      {registeredCount}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-foreground">
+                      <DollarSign className="h-4 w-4" />
+                      <span className="font-medium">Revenue</span>
+                    </div>
+                    <p className="mt-2 text-2xl font-bold text-foreground">
+                      ${revenue.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-foreground">
+                      <BadgeCheck className="h-4 w-4" />
+                      <span className="font-medium">Checked In</span>
+                    </div>
+                    <p className="mt-2 text-2xl font-bold text-foreground">
+                      {checkedInCount}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
+
+                <div className="flex flex-wrap items-center gap-4 pt-1">
                   <span className="flex items-center gap-1">
                     <Users className="h-3.5 w-3.5" />
-                    {event.capacity}
+                    Capacity {event.capacity}
                   </span>
                   <span className="flex items-center gap-1">
                     <DollarSign className="h-3.5 w-3.5" />
-                    {price === 0 ? "Free" : `$${price.toFixed(2)}`}
+                    {price === 0 ? "Free event" : `Ticket $${price.toFixed(2)}`}
                   </span>
                 </div>
               </CardContent>
+
               <CardFooter className="gap-2 pt-0">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate(`/organizer/events/${event.id}/edit`)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/organizer/events/${event.id}/edit`);
+                  }}
                   className="flex-1"
                 >
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
@@ -162,7 +310,10 @@ export function OrganizerEventsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDelete(event.id, event.title)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(event.id, event.title);
+                  }}
                   className="text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
