@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -63,6 +63,22 @@ export function OrganizerEventsPage() {
     return () => window.clearInterval(intervalId);
   }, [dispatch, user]);
 
+  const totalEvents = useMemo(() => {
+    return events.length;
+  }, [events]);
+
+  const totalRegistered = useMemo(() => {
+    return events.reduce((sum, event) => sum + (event.registeredCount ?? 0), 0);
+  }, [events]);
+
+  const totalRevenue = useMemo(() => {
+    return events.reduce((sum, event) => sum + Number(event.revenue ?? 0), 0);
+  }, [events]);
+
+  const totalCheckedIn = useMemo(() => {
+    return events.reduce((sum, event) => sum + (event.checkedInCount ?? 0), 0);
+  }, [events]);
+
   if (!user || user.role !== "organizer") {
     return (
       <div className="container py-12 text-center">
@@ -103,6 +119,58 @@ export function OrganizerEventsPage() {
           <Plus className="h-4 w-4 mr-2" />
           Create Event
         </Button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              Total Events
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Ticket className="h-4 w-4" />
+              Total Registered
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalRegistered}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <DollarSign className="h-4 w-4" />
+              Total Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">
+              ${totalRevenue.toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <BadgeCheck className="h-4 w-4" />
+              Total Checked In
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-foreground">{totalCheckedIn}</p>
+          </CardContent>
+        </Card>
       </div>
 
       {loading && events.length === 0 && (
