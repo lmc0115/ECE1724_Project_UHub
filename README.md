@@ -336,11 +336,13 @@ The React client is built into `server/public/` at compile time and served as st
 
 PostgreSQL is used as the relational database, accessed through Prisma ORM. [Neon](https://neon.tech) provides a serverless PostgreSQL instance. The connection string is supplied via the `DATABASE_URL` environment variable, and Prisma connects to it without any configuration changes.
 
-A managed Upstash Redis instance is provisioned via `fly redis create` and attached to the application. The connection URL is retrieved with `fly redis list`, then injected as an environment variable.
+A managed Upstash Redis instance is provisioned via `fly redis create` and attached to the application. The connection URL is retrieved with `fly redis list`, then injected as an environment variable. Redis serves as the Socket.IO adapter so that WebSocket events are broadcast through a shared pub/sub channel — ensuring all running machine instances see every chat message regardless of which instance a client is connected to. This makes the live chat horizontally scalable should additional machines be added.
 
 All environment variable are set as secrets (`DATABASE_URL`, `JWT_SECRET`, `AWS_*`, `SMTP_*`, `REDIS_URL`, etc.). They are injected at runtime via `fly secrets set` and are never committed to the repository.
 
 **CI/CD:** A GitHub Actions workflow (`.github/workflows/fly-deploy.yml`) triggers on every push to `main`. It installs `flyctl` and runs `flyctl deploy --remote-only`, building the Docker image on Fly.io's remote builders and promoting it automatically. The `FLY_API_TOKEN` is stored as a GitHub Actions secret.
+
+**Note:** Concurrency-based auto-scaling (soft/hard request limits) is not configured in the current deployment due to free-tier constraints. However, the Redis Socket.IO adapter is intentionally in place so that the architecture is ready for horizontal scaling. Additional machines can be added without any changes to the application code by the current configuration.
 
 ## 8.0 AI Assistance & Verification
 
@@ -413,3 +415,9 @@ A second notable issue: AI-generated email verification code worked correctly on
 **Testing with real services matters.** Using Ethereal for email testing was convenient during development, but switching to real Gmail SMTP revealed timing and delivery issues that would not have been caught otherwise. Similarly, testing S3 uploads against a real bucket exposed CORS issues that mock testing would have missed.
 
 Overall, UHub successfully delivers on its three core objectives: centralizing event discovery, streamlining registration with QR ticketing, and enabling efficient on-site check-in. The project demonstrates a full-stack application with authentication, role-based access control, real-time communication, cloud file storage, and containerized deployment — all built within the course timeline by a team of three.
+
+## 11.0 Video Demo
+
+[Click this link to visit the video demo for Uhub](https://youtu.be/ZsQXGkocJ1E)
+Or copy the link below and open in browser
+https://youtu.be/ZsQXGkocJ1E
