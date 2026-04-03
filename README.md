@@ -1,6 +1,6 @@
 # UHub — University Campus Activity Hub
 
-## Team Information
+## 0.0 Team Information
 
 | Name | Student Number | Email |
 |------|---------------|-------|
@@ -8,19 +8,21 @@
 | Jerry Chen | 1006944899 | jianuojerry.chen@mail.utoronto.ca |
 | Ziyan Liu | 1011801926 | zycathy.liu@mail.utoronto.ca |
 
-## Motivation
+## 1.0 Motivation
 
-University campus events are scattered across Instagram pages, Discord servers, club newsletters, and word of mouth. Students miss events simply because they never hear about them, while organizers struggle to reach their full audience despite promotional efforts. Even when students find and register for an event, organizers face a separate operational bottleneck: manual or disjointed check-in processes slow down entry, create queues, and add unnecessary administrative burden.
+Held events are one of the most important parts of university life, yet the infrastructure supporting them has not kept pace. Across campuses, event information is scattered across Instagram pages, Discord servers, club newsletters, and word of mouth. This fragmentation leaves students without a centralized place to discover what is happening, creating a two sided problem. Students miss out on events simply because they never hear about them, while organizers struggle to reach their full potential audience despite their promotional efforts.
 
-No existing tool provides a campus-specific, all-in-one solution covering event discovery, ticketing, and check-in within a single cohesive experience. Tools like Google Forms, Eventbrite, and social media each serve narrow purposes but force users to juggle multiple platforms. A unified platform improves event visibility, reduces administrative overhead, and creates a smoother, more connected campus experience.
+The challenges extend beyond discovery. Even when students successfully find and register for an event, organizers often face operational bottlenecks at the entrance. Manual or disjointed check in processes slow down entry, create queues, and add unnecessary administrative burden to what should be a seamless experience. To address these issues, this project proposes the development of a centralized web platform for university campus activities. Students will be able to browse events, view detailed information, register or purchase tickets, and receive a QR code for streamlined check in, while organizers can create and manage events, track registrations, and validate attendance efficiently through an integrated QR scanning system.
 
-UHub is designed for three distinct user groups:
+The significance of this project lies in its ability to address a genuine and recurring need shared by students and organizations across virtually every university campus. While existing tools such as Google Forms, Eventbrite, and social media are useful in isolation, none offers a campus specific, end to end solution that integrates event discovery, registration, and check in within a single cohesive platform. By unifying these functions, the platform improves event visibility, reduces administrative overhead, and creates a more connected and engaging campus experience that current solutions do not fully provide.
+
+For the target users, UHub is designed for three distinct user groups:
 
 1. **Students** who need a single place to discover campus events, register, and receive QR-coded tickets.
 2. **Organizers** (clubs, societies, departments) who need efficient tools to create events, manage registrations, and track attendance.
 3. **Staff** who require fast and reliable QR-based check-in at event doors.
 
-## Objectives
+## 2.0 Objectives
 
 UHub aims to create a unified web platform for university campus activities, guided by three core objectives:
 
@@ -30,7 +32,7 @@ UHub aims to create a unified web platform for university campus activities, gui
 
 3. **Improve the on-site event experience through integrated QR-based attendance validation.** Staff scan QR codes at the door to verify registrations instantly, preventing duplicate check-ins and eliminating manual processes. Organizers monitor registrations and attendance metrics in real time through a dashboard.
 
-## Technical Stack
+## 3.0 Technical Stack
 
 UHub uses a **separated frontend and backend architecture** deployed as an npm monorepo with workspaces.
 
@@ -51,69 +53,70 @@ UHub uses a **separated frontend and backend architecture** deployed as an npm m
 | **Deployment** | Fly.io | Container-based deployment with managed PostgreSQL and Redis |
 | **Dark Mode** | Custom ThemeProvider with CSS variables | System-preference-aware light/dark toggle persisted to localStorage |
 
-## Features
 
-### 1. Event Discovery and Browsing
+## 4.0 Features
+
+### 4.1 Event Discovery and Browsing
 
 Students browse all published campus events on the home page displayed as responsive cards. A real-time search bar filters events by title, location, or description. Each card shows the event cover image, date, location, and a truncated description. Clicking a card navigates to the full event detail page.
 
 **Technical realization:** The frontend dispatches `fetchEvents` (Redux thunk) which calls `GET /api/events`. The Express route queries all events from PostgreSQL via Prisma, including organizer info and registration statistics. Client-side filtering runs against the loaded event list for instant search without additional API calls.
 
-### 2. Secure Authentication with Email Verification
+### 4.2 Secure Authentication with Email Verification
 
 Users register by selecting their role (student, organizer, or staff) and providing credentials. A verification email is sent immediately upon registration. Users cannot log in until their email is verified. If a user attempts to re-register with an unverified email, the system updates the existing account with new credentials and resends the verification email rather than creating a duplicate.
 
 **Technical realization:** Passwords are hashed with bcrypt (12 rounds). Registration generates a UUID verification token stored in the database and sends an HTML email via Nodemailer containing a verification link. The `GET /api/auth/verify-email` endpoint validates the token, sets `emailVerified = true`, and clears the token. Login checks `emailVerified` before issuing a JWT. The frontend `VerifyEmailPage` uses a `useRef` guard to prevent React StrictMode double-invocation from consuming the token twice.
 
-### 3. Role-Based Access Control
+### 4.3 Role-Based Access Control
 
 Three distinct roles — student, organizer, and staff — each see different navigation links and have access to different features. The backend enforces role restrictions via `requireAuth` and `requireRole` middleware on every protected route.
 
 **Technical realization:** JWTs encode `{ sub: userId, role }` and are verified on each request. The `requireRole(...roles)` middleware rejects requests from users without the required role. The frontend conditionally renders navigation links and page content based on the authenticated user's role stored in Redux state.
 
-### 4. Event Creation and Management (Organizer)
+### 4.4 Event Creation and Management (Organizer)
 
 Organizers create events with title, description, location, date/time, capacity, ticket price, status (Draft/Published/Cancelled), and an optional cover image. The "My Events" dashboard lists only events created by the authenticated organizer, with aggregate statistics (total registered, revenue, checked-in count). Organizers can edit or delete only their own events, enforced both client-side and server-side.
 
 **Technical realization:** `POST /api/events` sets `organizerId` from the JWT payload, not from the request body, preventing impersonation. `PUT` and `DELETE` routes verify ownership by comparing the event's `organizerId` against `req.user.sub`. Cover images are uploaded via `POST /api/upload/event-cover` using Multer for multipart handling, then streamed to AWS S3 via `uploadBufferToS3`. The dashboard polls `GET /api/events/my` every 10 seconds for live updates.
 
-### 5. Event Registration and QR Ticketing (Student)
+### 4.5 Event Registration and QR Ticketing (Student)
 
 Students register for published events from the event detail page. For paid events, a payment summary is displayed before registration (payment is simulated). Upon successful registration, a unique QR-coded ticket is generated and can be displayed on-screen. Students view all their registrations on the "My Events" page, where they can expand QR codes or cancel registrations that haven't been redeemed.
 
 **Technical realization:** `POST /api/registrations` runs atomically — it checks event existence, publication status, duplicate registration, and capacity in a single transaction. On success it creates both a `Registration` and a `Ticket` record with `qrCodeData = "UHUB-${uuid}"`. The frontend renders QR codes using `QRCodeSVG` from the `qrcode.react` library. The unique constraint `@@unique([studentId, eventId])` in Prisma prevents duplicate registrations at the database level.
 
-### 6. QR Code Check-In (Staff)
+### 4.6 QR Code Check-In (Staff)
 
 Staff members access a dedicated check-in page with two modes: camera scanning (using the device camera) and manual QR code entry. After scanning, the system validates the ticket, marks it as redeemed, and displays student and event information with a success or error result.
 
 **Technical realization:** The staff page dynamically imports `html5-qrcode` to access the device camera and decode QR codes. `POST /api/tickets/verify` looks up the ticket by `qrCodeData`, checks that it hasn't been previously redeemed and that payment status is `PAID`, then updates `redemptionStatus` to `REDEEMED` with a timestamp and the validating staff member's ID. Already-redeemed tickets return a 400 error with the prior redemption details.
 
-### 7. Real-Time Live Chat (Socket.IO + Redis)
+### 4.7 Real-Time Live Chat (Socket.IO + Redis)
 
 Each event has a live chat where the event organizer and registered students can communicate in real time. Chat messages are persisted in Redis and the last 50 messages are loaded as history when joining. The chat is scoped per event — only the organizer who owns the event and students who have registered for it can participate.
 
 **Technical realization:** The server initializes Socket.IO with a Redis adapter for horizontal scalability. On `chat:join`, the server verifies the user's JWT, checks role-specific access (organizer must own the event; student must have a registration), and joins the user to a room named `event:${eventId}`. Messages are persisted using Redis `RPUSH` with a trim to 50 entries. The client `LiveChatCard` component manages socket lifecycle, renders chat bubbles with role badges and timestamps, and enforces a 500-character message limit.
 
-### 8. Profile Management and Image Upload
+### 4.8 Profile Management and Image Upload
 
 All users can update their name and email, upload a profile avatar, and view their avatar in a full-screen lightbox. Event cover images are also viewable in a lightbox on the detail page.
 
 **Technical realization:** Avatar uploads go through `POST /api/upload/avatar`, which uses Multer to receive multipart form data, validates file type and size (5 MB max, JPEG/PNG/WebP/GIF), uploads the buffer to S3, deletes the old avatar object if one exists, and updates the user's `avatarUrl` in the database. The frontend uses `uploadFile` which sends `FormData` directly, bypassing S3 CORS issues entirely through server-side proxy.
 
-### 9. Dark Mode
+### 4.9 Dark Mode
 
 A theme toggle in the navigation bar switches between light and dark modes. The theme respects the user's system preference on first visit and persists the choice to localStorage.
 
 **Technical realization:** A `ThemeProvider` React context manages the `"light" | "dark"` state, toggling the `dark` class on `document.documentElement`. Tailwind's `darkMode: ["class"]` configuration enables all dark-variant utility classes. CSS custom properties in `index.css` define HSL color tokens for both `:root` and `.dark` selectors.
 
-### 10. Security Enhancements
+### 4.10 Security Enhancements
 
 Beyond standard JWT authentication, the system captures the client's IP address (respecting `X-Forwarded-For` from Fly.io's proxy) and generates a server-side device fingerprint (SHA-256 hash of User-Agent + Accept headers) on registration. These are stored for audit and potential anomaly detection.
 
-## User Guide
+## 5.0 User Guide
 
-### Browsing Events
+### 5.1 Browsing Events
 
 1. Visit the home page to see all published campus events as cards.
 2. Use the search bar to filter events by title, location, or description.
@@ -123,7 +126,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Event detail page](Picture/p2.png)
 
-### Registration and Login
+### 5.2 Registration and Login
 
 1. Click **Login** in the top navigation bar.
 2. Select the **Register** tab and choose your role (Student, Organizer, or Staff).
@@ -135,7 +138,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Email verification](Picture/p4.png)
 
-### Registering for an Event (Student)
+### 5.3 Registering for an Event (Student)
 
 1. Log in as a student and navigate to an event detail page.
 2. Click **Register Now**. For paid events, review the payment summary and confirm.
@@ -144,7 +147,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Student event registration and QR code](Picture/p5.png)
 
-### Checking In Attendees (Staff)
+### 5.4 Checking In Attendees (Staff)
 
 1. Log in as a staff member and click **Check-In** in the navigation bar.
 2. Choose **Camera** mode to scan a student's QR code using your device camera, or **Manual** mode to type in the QR code string.
@@ -154,7 +157,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Staff check-in — verification result](Picture/p7.png)
 
-### Managing Events (Organizer)
+### 5.5 Managing Events (Organizer)
 
 1. Log in as an organizer and click **My Events** in the navigation bar.
 2. Click **Create Event** to add a new event. Fill in all fields and optionally upload a cover image.
@@ -167,7 +170,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Organizer — create/edit event form](Picture/p9.png)
 
-### Live Chat
+### 5.6 Live Chat
 
 1. On an event detail page, registered students and the event organizer will see a **Live Chat** card.
 2. Type a message and press Send (or Enter) to chat in real time.
@@ -175,7 +178,7 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Live chat on event detail page](Picture/p10.png)
 
-### Profile Management
+### 5.7 Profile Management
 
 1. Click your avatar or **Account** in the navigation bar.
 2. Edit your name or email and click **Save Changes**.
@@ -184,15 +187,17 @@ Beyond standard JWT authentication, the system captures the client's IP address 
 
 ![Profile management page](Picture/p11.png)
 
-### Dark Mode
+### 5.8 Dark Mode
 
 Click the sun/moon icon in the navigation bar to toggle between light and dark themes.
 
 ![Dark mode toggle](Picture/p12.png)
 
-## Development Guide
+## 6.0 Development Guide
 
-### Prerequisites
+This section guides through setting up and running UHub in a local development environment.
+
+### 6.1 Prerequisites
 
 - **Node.js** v18+ and npm
 - **Docker Desktop** (for PostgreSQL and Redis)
@@ -200,7 +205,7 @@ Click the sun/moon icon in the navigation bar to toggle between light and dark t
 - An **AWS account** with an S3 bucket (for image uploads)
 - A **Gmail account** with an App Password (for email verification), or use Ethereal for testing
 
-### Environment Setup
+### 6.2 Environment Setup
 
 1. Clone the repository:
 
@@ -218,11 +223,11 @@ npm install
 3. Create the server environment file at `server/.env`:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/uhub?schema=public&connect_timeout=10"
+DATABASE_URL="postgresql://postgres:your-user-name@127.0.0.1:5432/uhub?schema=public&connect_timeout=10"
 
 AWS_ACCESS_KEY_ID=your-aws-access-key
 AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-AWS_REGION=us-east-2
+AWS_REGION=your-region
 AWS_S3_BUCKET=your-s3-bucket-name
 
 SMTP_HOST=smtp.gmail.com
@@ -231,18 +236,19 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 SMTP_FROM=UHub <your-email@gmail.com>
 
-CLIENT_URL=http://localhost:5173
+REDIS_URL=redis://your-redis-url
 ```
 
 If `SMTP_HOST` is not set, the server automatically uses an Ethereal test email account and prints preview URLs to the terminal.
 
-### Database Initialization
+### 6.3 Database Initialization
 
 1. Start the PostgreSQL container:
 
 ```bash
 cd server
-bash setupdocker.sh
+chmod +x setupdocker.sh
+./setupdocker.sh
 ```
 
 Or manually with Docker:
@@ -251,29 +257,37 @@ Or manually with Docker:
 docker run -d --name uhub-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=uhub -p 5432:5432 postgres:16
 ```
 
-2. Run Prisma migrations and generate the client:
+2. Run Prisma migrations and seed the database:
+
+```bash
+cd server
+chmod +x migrate.sh
+./migrate.sh
+```
+
+Or manually:
 
 ```bash
 cd server
 npx prisma migrate dev
-npx prisma generate
+npx prisma db seed
 ```
 
-3. (Optional) Seed the database with sample data:
+3. (Optional) Inspect the database and verify seeded data in Prisma Studio:
 
 ```bash
 cd server
-npm run seed
+npx prisma studio
 ```
 
-### Cloud Storage Configuration
+### 6.4 Cloud Storage Configuration
 
 1. Create an S3 bucket in your AWS account (e.g., `uhub-images`).
 2. Ensure the bucket allows public read access for stored objects (or use presigned URLs).
 3. Set the AWS credentials and bucket name in `server/.env`.
 4. The server automatically configures CORS rules on the S3 bucket at startup.
 
-### Redis Setup (for Live Chat)
+### 6.5 Redis Setup (for Live Chat)
 
 Start a Redis container:
 
@@ -283,7 +297,7 @@ docker run -d --name uhub-redis -p 6379:6379 redis:7
 
 The server connects to `redis://127.0.0.1:6379` by default, or set `REDIS_URL` in the environment.
 
-### Local Development and Testing
+### 6.6 Local Development and Testing
 
 Start the backend and frontend dev servers:
 
@@ -306,24 +320,33 @@ cd server
 npm test
 ```
 
-## Deployment Information
+## 7.0 Deployment Information
 
-UHub is deployed on **Fly.io** at:
+The application is deployed on the PaaS [Fly.io](https://fly.io) at **https://uhub.fly.dev**.
 
-**Live URL:** [https://uhub.fly.dev](https://uhub.fly.dev)
+| Parameter | Value |
+|-----------|-------|
+| Region | `yyz`|
+| vCPUs | 1 |
+| Memory | 512 MB |
+| Internal port | 4000 (HTTPS enforced) |
+| Min machines running | 1 (Always have 1 machine working)|
 
-- **Platform:** Fly.io (container-based PaaS)
-- **Region:** YYZ (Toronto)
-- **Infrastructure:** 1 vCPU, 512 MB RAM
-- **Database:** Fly Postgres (managed)
-- **Redis:** Fly Redis (for Socket.IO adapter and chat persistence)
-- **Build:** The production build bundles the React client into `server/public/` and serves it via Express's static file middleware with SPA fallback.
+The React client is built into `server/public/` at compile time and served as static files by Express, so a single container handles both the API and the SPA.
 
-## AI Assistance & Verification (Summary)
+PostgreSQL is used as the relational database, accessed through Prisma ORM. [Neon](https://neon.tech) provides a serverless PostgreSQL instance. The connection string is supplied via the `DATABASE_URL` environment variable, and Prisma connects to it without any configuration changes.
+
+A managed Upstash Redis instance is provisioned via `fly redis create` and attached to the application. The connection URL is retrieved with `fly redis list`, then injected as an environment variable.
+
+All environment variable are set as secrets (`DATABASE_URL`, `JWT_SECRET`, `AWS_*`, `SMTP_*`, `REDIS_URL`, etc.). They are injected at runtime via `fly secrets set` and are never committed to the repository.
+
+**CI/CD:** A GitHub Actions workflow (`.github/workflows/fly-deploy.yml`) triggers on every push to `main`. It installs `flyctl` and runs `flyctl deploy --remote-only`, building the Docker image on Fly.io's remote builders and promoting it automatically. The `FLY_API_TOKEN` is stored as a GitHub Actions secret.
+
+## 8.0 AI Assistance & Verification
 
 AI tools (primarily Cursor with Claude) were used throughout development as a productivity aid. The team understands where AI was applied, evaluated its output critically, and verified correctness through testing.
 
-### Where AI Meaningfully Contributed
+### 8.1 Where AI Meaningfully Contributed
 
 - **Architecture exploration:** AI helped structure the monorepo workspace layout, Prisma schema design, and Express middleware chain.
 - **Frontend scaffolding:** AI generated initial React page components, Redux slices, and shadcn/ui integration, which were then reviewed and customized.
@@ -331,13 +354,13 @@ AI tools (primarily Cursor with Claude) were used throughout development as a pr
 - **Debugging:** AI helped diagnose specific issues including S3 CORS errors (leading to the server-side proxy upload solution), React StrictMode double-effect causing email verification failures, and Express TypeScript typing issues.
 - **Documentation:** AI helped draft and structure this README report.
 
-### A Representative AI Mistake
+### 8.2 A Representative AI Mistake
 
 When implementing image uploads, AI initially generated code for direct browser-to-S3 uploads using presigned URLs. This approach failed in practice due to S3 CORS restrictions that could not be reliably resolved from the browser side. Even after AI suggested programmatically configuring bucket CORS at server startup, the direct upload continued to fail with "Failed to fetch" errors. The team identified that the root cause was the browser's same-origin policy blocking cross-origin PUT requests to S3, and redirected AI to implement a server-side proxy upload using Multer instead — which resolved the issue completely. This demonstrated that AI suggestions need to be validated against real runtime behavior, not just theoretical correctness.
 
 A second notable issue: AI-generated email verification code worked correctly on a single API call, but failed under React's StrictMode (which double-fires `useEffect` in development). The first call consumed the verification token, and the second call immediately failed, showing users a "Verification Failed" screen even though their email was successfully verified in the database. The team diagnosed this by querying the database directly, confirming the email was verified, and then identified the StrictMode double-render as the root cause. The fix was a `useRef` guard to ensure the API call only executes once.
 
-### How Correctness Was Verified
+### 8.3 How Correctness Was Verified
 
 - **Manual testing:** Every user flow (registration, email verification, login, event creation, registration, QR check-in, live chat) was tested end-to-end through the browser.
 - **Database inspection:** Prisma Studio and direct `psql` queries were used to verify data integrity after operations.
@@ -345,9 +368,9 @@ A second notable issue: AI-generated email verification code worked correctly on
 - **Unit tests:** Jest tests exist for event routes (`server/test/events.routes.test.ts`).
 - **Real email testing:** Gmail SMTP was configured to verify the email verification flow with actual email delivery.
 
-## Individual Contributions
+## 9.0 Individual Contributions
 
-### Jerry Chen (EZmoneySniper250)
+### 9.1 Jerry Chen (EZmoneySniper250)
 
 - Designed and implemented the initial PostgreSQL schema and Prisma models with relational constraints.
 - Built the complete Express.js backend architecture: event CRUD API, authentication middleware (JWT), and password hashing (bcrypt).
@@ -357,7 +380,7 @@ A second notable issue: AI-generated email verification code worked correctly on
 - Fixed deployment configuration issues (environment variables in fly.toml, socket connectivity).
 - **Key commits:** `Initial Framework`, `Event service all finished`, `auth + middleware`, `AWS S3 configured`, `deployed the first version on fly.io`, `Forced IP + Fingerprint enhancement`, `fix all socket issues, ready to deploy`.
 
-### Muchen Liu (lmc0115)
+### 9.2 Muchen Liu (lmc0115)
 
 - Built the complete React frontend: all pages (Home, Event Detail, My Events, Account, Organizer Events, Event Form, Staff Check-In, Verify Email), Navbar, and EventCard components.
 - Implemented Redux Toolkit state management with async thunks for auth, events, and registrations slices.
@@ -366,7 +389,7 @@ A second notable issue: AI-generated email verification code worked correctly on
 - Connected QR code generation (qrcode.react) and scanning (html5-qrcode) to the registration and check-in flows.
 - **Key commits:** `finish the frontend with api connected`, `enable email verification`.
 
-### Ziyan Liu (Ziyan9)
+### 9.3 Ziyan Liu (Ziyan9)
 
 - Implemented the real-time live chat feature using Socket.IO with Redis adapter for scalability.
 - Built the server-side socket middleware (JWT auth, role-based room access, message persistence in Redis).
@@ -375,7 +398,7 @@ A second notable issue: AI-generated email verification code worked correctly on
 - Built the organizer dashboard with aggregate statistics (registered count, revenue, checked-in count).
 - **Key commits:** `feature: live chat via WebSocket + Redis`, `Add dark mode and organizer event statistics`, `feature: add organizer dashboard top summary`.
 
-## Lessons Learned and Concluding Remarks
+## 10.0 Lessons Learned and Concluding Remarks
 
 **Monorepo benefits and pitfalls.** Using npm workspaces allowed shared dependency management and simplified development, but required careful attention to which directory commands were run from — Prisma commands in particular needed to be executed from the `server/` directory.
 
